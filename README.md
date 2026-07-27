@@ -1,0 +1,109 @@
+# XiaoZhi E-Paper Skill
+
+> 一个让 AI Agent 通过局域网 HTTP 控制 ESP32 电子墨水屏的技能包。
+> 支持页面管理、画布绘制、动态元素、自定义页面持久化，以及 Web 控制台。
+
+## 这是什么
+
+这个仓库是一个 **Agent Skill** — 一套让 AI 助手（如 Hermes Agent 或其他支持 MCP/工具调用的 Agent）控制小智 ESP32 设备电子墨水屏的知识包。
+
+它包含：
+- **SKILL.md** — Agent 可读的技能定义（触发条件、API 参考、工作流）
+- **docs/** — 详细的开发文档（API、固件、Web、模板、设计哲学）
+- **scripts/** — 可直接运行的 Python 工具脚本
+- **templates/** — 即用型页面布局模板
+
+## 设备要求
+
+- ESP32-S3 开发板，运行 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 固件
+- 启用 LocalControl（HTTP 服务器，端口 8080 + mDNS）
+- 带电子墨水屏（默认 296×128 像素）
+- 与控制端在同一局域网
+
+## 快速开始
+
+### 1. 发现设备
+
+```bash
+python3 scripts/xiaozhi_discovery.py --health --save
+```
+
+### 2. 健康检查
+
+```bash
+curl http://<IP>:8080/
+# → {"status":"ok","board":"...","version":"..."}
+```
+
+### 3. 调用 MCP 工具
+
+```bash
+# 切换到画布页面
+curl -X POST http://<IP>:8080/api/call \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.pagemanager","args":{"target_page":6}}'
+
+# 在画布上添加文字
+curl -X POST http://<IP>:8080/api/call \
+  -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.canvas.add_text","args":{"id":"hello","text":"Hello!","x":10,"y":10,"font_size":16,"align":"left","refresh":true}}'
+```
+
+### 4. 使用布局 DSL 一键部署
+
+```bash
+python3 scripts/quick_page_builder.py <IP> 6 - << 'EOF'
+clear
+text id=title text="今日待办" x=8 y=2 font_size=12 align=left refresh=false
+line id=sep x1=0 y1=18 x2=296 y2=18 width=1 refresh=false
+text id=item1 text="写论文" x=20 y=24 font_size=12 refresh=false
+text id=item2 text="训模型" x=20 y=42 font_size=12 refresh=false
+text id=item3 text="做饭" x=20 y=60 font_size=12 refresh=true
+EOF
+```
+
+## 功能概览
+
+| 功能 | 说明 |
+|------|------|
+| 设备发现 | mDNS / 缓存 IP / 端口扫描，自动发现局域网内设备 |
+| 页面切换 | 6 个内置页面 + 最多 9 个自定义页面 (7-15) |
+| 画布绘制 | 文字、线条、矩形、图片，支持 LittleFS 持久化 |
+| 自定义页面 | 创建/删除/重命名，元素持久化到 Flash，重启不丢失 |
+| 动态元素 | 设备端时钟/温度/内存（无需 Agent）+ Agent 推送（天气/股价等）|
+| 像素画 | 13 种内置 24×24 像素画素材，自动生成并上传 |
+| Web 控制台 | 浏览器端管理界面，支持手绘、拖拽、预览 |
+| 屏幕设计哲学 | 10 条原则 + 5 个刷新前问题，让屏幕成为 Agent 的"生活画布" |
+
+## 文档索引
+
+| 文档 | 内容 |
+|------|------|
+| [SKILL.md](SKILL.md) | Agent 技能定义 — 触发条件、API 参考、工作流 |
+| [docs/api-reference.md](docs/api-reference.md) | HTTP API + MCP 工具完整参考 |
+| [docs/custom-pages.md](docs/custom-pages.md) | 自定义页面架构、动态元素、持久化 |
+| [docs/page-templates.md](docs/page-templates.md) | 7 种即用型页面布局模板 |
+| [docs/firmware-development.md](docs/firmware-development.md) | 固件编译、烧录、调试、源码结构 |
+| [docs/web-console.md](docs/web-console.md) | Web 控制台搭建、CORS 配置、前端 API |
+| [docs/canvas-web-interaction.md](docs/canvas-web-interaction.md) | 画布交互模式：统一事件、离屏画笔、拖拽 |
+| [docs/display-philosophy.md](docs/display-philosophy.md) | 屏幕设计哲学：10 原则 + 5 问题 |
+
+## 屏幕设计哲学
+
+这个 Skill 不仅仅是一个技术工具。它包含一套设计哲学——把电子墨水屏当作 AI Agent 在现实世界的"生活画布"，而非简单的信息显示器。
+
+> 你的目标不是"把屏幕填满"，而是"让朋友觉得这一眼值得看"。
+
+详见 [docs/display-philosophy.md](docs/display-philosophy.md)。
+
+## 技术栈
+
+- **设备端**: ESP32-S3, ESP-IDF v5.4, xiaozhi-esp32 固件
+- **通信**: HTTP (局域网), MCP (Model Context Protocol)
+- **存储**: LittleFS (2MB 分区, 存储图片和页面布局)
+- **屏幕**: 296×128 电子墨水屏 (GxEPD2)
+- **控制端**: Python 3, curl, 任何支持 HTTP 的 Agent
+
+## License
+
+MIT
