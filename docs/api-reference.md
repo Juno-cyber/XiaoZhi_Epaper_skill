@@ -1,7 +1,7 @@
 # API Reference — xiaozhi ESP32 HTTP & MCP Tools
 
 Complete reference for the HTTP API and MCP tools exposed by the xiaozhi-esp32
-device when LocalControl is enabled (HTTP server on port 8080 + mDNS `xiaozhi.local`).
+device when LocalControl is enabled (HTTP server on port 8080 + mDNS `xiaozhi-<MAC>.local`).
 
 ## HTTP Endpoints
 
@@ -10,6 +10,13 @@ device when LocalControl is enabled (HTTP server on port 8080 + mDNS `xiaozhi.lo
 ```bash
 curl http://<IP>:8080/
 # → {"status":"ok","board":"bread-compact-wifi-epaperx","version":"2.0.3",...}
+```
+
+### Built-in Device Scanner UI
+
+```
+GET http://<IP>:8080/ui
+# → Returns an HTML page that auto-scans the LAN for xiaozhi devices
 ```
 
 ### Call MCP Tool (simplified format — recommended)
@@ -71,32 +78,40 @@ curl http://<IP>:8080/api/canvas_image
 
 ## Available MCP Tools
 
+MCP tools exposed by the device (14 visible tools — 10 fridge core + 3 UI aggregators + 1 network):
+
+### Fridge Core (10 tools)
+
 | Tool | Description | Key Args |
 |------|-------------|----------|
-| `fridge.pagemanager` | Switch e-paper page | `target_page`: 1-15 |
-| `fridge.stats.summary` | Fridge statistics | `{}` |
-| `fridge.stats.query` | Query items by filter | `category`, `expire_within_days` |
-| `fridge.item.list` | List all items | `sort_by`: name/expiry/quantity |
 | `fridge.item.get` | Get single item | `item_id` |
-| `fridge.item.add` | Add item | `name`, `category`, `quantity`, `unit`, `expire_time` |
-| `fridge.item.update` | Update item | `item_id` + fields to change |
+| `fridge.item.add` | Add item | `name`, `category`, `quantity`, `unit`, `expire_time`, `storage_state`(opt) |
 | `fridge.item.remove` | Remove item | `item_id` |
 | `fridge.item.clear_all` | Clear all items | `{}` |
-| `fridge.recipe.recommend` | Recommend recipe + display | `dish_name`, `required_ingredients`, `recommendation_mode` |
-| `fridge.canvas.add_text` | Place text on canvas (page 6) | `id`, `text`, `x`, `y`, `font_size`, `align`, `refresh` |
-| `fridge.canvas.add_rect` | Place rectangle on canvas (page 6) | `id`, `x`, `y`, `w`, `h`, `filled`, `refresh` |
-| `fridge.canvas.add_line` | Place line on canvas (page 6) | `id`, `x1`, `y1`, `x2`, `y2`, `width`, `refresh` |
-| `fridge.canvas.add_image` | Load image from LittleFS to canvas (page 6) | `id`, `name`, `x`, `y`, `w`, `h`, `refresh` |
-| `fridge.canvas.clear` | Clear all canvas elements (page 6) | `refresh`, optional `id` for single-element removal |
-| `fridge.page.create` | Create custom page (7-15) | `name` — returns `{page, name}` |
-| `fridge.page.delete` | Delete custom page + elements | `page` (7-15) |
-| `fridge.page.list` | List all pages (builtin + custom) | `{}` — returns `[{page, name, builtin}]` |
-| `fridge.page.rename` | Rename custom page | `page` (7-15), `name` |
-| `fridge.page.element.add` | Add element to custom page | `page`, `id`, `type`(text/rect/line), `x`, `y`, `text`, `font_size`, `align`, `w`, `h`, `filled`, `x1`, `y1`, `x2`, `y2`, `width`, `dynamic`, `dynamic_type`(clock/date/datetime/cpu_temp/heap/uptime), `refresh` |
-| `fridge.page.element.update` | **Update dynamic element text** (cron → push to display) | `page`, `id`, `text`, `refresh`(default true) |
-| `fridge.page.element.remove` | Remove element from custom page | `page`, `id`, `refresh` |
-| `fridge.page.element.list` | List elements on custom page | `page` (7-15) |
-| `fridge.page.clear` | Clear all elements from custom page | `page`, `refresh` |
+| `fridge.item.list` | List all items | `category`(opt), `limit`(opt), `sort_by`(opt), `order`(opt) |
+| `fridge.item.update` | Update item | `item_id`, `name` + optional fields to change |
+| `fridge.stats.summary` | Fridge statistics | `{}` |
+| `fridge.stats.query` | Query items by filter | `category`(opt), `filter`(opt: all/expired/expiring_soon), `expiring_days`(opt) |
+| `fridge.pagemanager` | Switch e-paper page | `target_page`: 1-15 |
+| `fridge.recipe.recommend` | Recommend recipe + display | `recommendation_mode`, `dish_name`, `required_ingredients`, `summary`(opt), `extra_ingredients`(opt), `cooking_time`(opt), `switch_page`(opt) |
+
+### UI Aggregators (3 tools — each uses `action` to dispatch)
+
+| Tool | Description | action values | Key Args |
+|------|-------------|---------------|----------|
+| `fridge.canvas.control` | Control canvas page 6 | `add_text`, `add_rect`, `add_line`, `add_image`, `list`, `remove`, `clear`, `refresh` | `id`, `text`, `name`, `x`, `y`, `x1`, `y1`, `x2`, `y2`, `w`, `h`, `width`, `font_size`, `align`, `filled`, `refresh` |
+| `fridge.page.control` | Manage custom pages 7-15 | `create`, `delete`, `list`, `rename`, `clear` | `page`, `name`, `refresh` |
+| `fridge.page.element.control` | Control elements on pages 7-15 | `add`, `update`, `remove`, `list` | `page`, `id`, `type`, `text`, `x`, `y`, `x1`, `y1`, `x2`, `y2`, `w`, `h`, `width`, `font_size`, `align`, `filled`, `dynamic`, `dynamic_type`, `refresh` |
+
+### Network (1 tool)
+
+| Tool | Description | Key Args |
+|------|-------------|----------|
+| `device.network.info` | Get Wi-Fi IP, HTTP URL | `{}` |
+
+### Legacy Compatibility
+
+Old tool names (e.g. `fridge.canvas.add_text`, `fridge.page.create`, `fridge.page.element.add`) still work via `/api/call` — the device auto-maps them to the new aggregator format. The `/mcp` (JSON-RPC) endpoint only supports the new tool names.
 
 ## E-Paper Pages
 
@@ -119,30 +134,40 @@ the critical timing constraint (no `audio_service_` calls in early states).
 ## Canvas API (Page 6)
 
 The canvas page lets the Agent freely place text, lines, and rectangles on the
-296×128 e-paper display. Use `refresh=false` to batch multiple operations, then
-call a final operation with `refresh=true` (or `fridge.canvas.refresh`) to update
-the screen.
+296×128 e-paper display. All operations go through `fridge.canvas.control` with an `action` parameter.
 
-| Tool | Description | Key Args |
-|------|-------------|----------|
-| `fridge.canvas.add_text` | Place text | `id`, `text`, `x`, `y`, `font_size`(12/16), `align`(left/center/right), `refresh` |
-| `fridge.canvas.add_rect` | Place rectangle | `id`, `x`, `y`, `w`, `h`, `filled`, `refresh` |
-| `fridge.canvas.add_line` | Place line | `id`, `x1`, `y1`, `x2`, `y2`, `width`, `refresh` |
-| `fridge.canvas.add_image` | Load image from LittleFS storage | `id`, `name`, `x`, `y`, `w`, `h`, `refresh` |
-| `fridge.canvas.clear` | Clear all elements (or remove single by `id`) | `refresh`(default true), optional `id` for single-element removal |
+| action | Description | Key Args |
+|--------|-------------|----------|
+| `add_text` | Place text | `id`, `text`, `x`, `y`, `font_size`(12/16), `align`(left/center/right), `refresh` |
+| `add_rect` | Place rectangle | `id`, `x`, `y`, `w`, `h`, `filled`, `refresh` |
+| `add_line` | Place line | `id`, `x1`, `y1`, `x2`, `y2`, `width`, `refresh` |
+| `add_image` | Load image from LittleFS storage | `id`, `name`, `x`, `y`, `w`, `h`, `refresh` |
+| `list` | List all elements | — |
+| `remove` | Remove single element | `id` |
+| `clear` | Clear all elements | — |
+| `refresh` | Force display refresh | — |
 
 ### Canvas Workflow
 
-1. `fridge.pagemanager target_page=6` — switch to canvas page
-2. `fridge.canvas.clear refresh=false` — clear old content
-3. Batch-add elements with `refresh=false`:
-   - `fridge.canvas.add_text id=title text="..." x=10 y=5 font_size=16 align=center refresh=false`
-   - `fridge.canvas.add_line id=div x1=10 y1=28 x2=286 y2=28 width=2 refresh=false`
-   - `fridge.canvas.add_rect id=box x=8 y=33 w=280 h=60 filled=false refresh=false`
-4. Final call with `refresh=true` — flush to screen
+```bash
+# 1. Switch to canvas page
+curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.pagemanager","args":{"target_page":6}}'
 
-`fridge.canvas.clear` also supports an `id` param for single-element removal
-(merged from the old `fridge.canvas.remove` tool to reduce total tool count).
+# 2. Clear old content
+curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.canvas.control","args":{"action":"clear","refresh":false}}'
+
+# 3. Batch-add elements
+curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.canvas.control","args":{"action":"add_text","id":"title","text":"Hello","x":10,"y":5,"font_size":16,"refresh":false}}'
+curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.canvas.control","args":{"action":"add_line","id":"div","x1":10,"y1":28,"x2":286,"y2":28,"width":2,"refresh":false}}'
+
+# 4. Flush to screen
+curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.canvas.control","args":{"action":"refresh"}}'
+```
 
 ## Canvas Image Storage (LittleFS)
 
@@ -214,7 +239,7 @@ For freehand drawing / image insertion from web:
 4. Pack into 1-bpp bitmap: 8 pixels per byte, MSB first, row-padded to byte
    boundary → `Uint8Array(ceil(296/8) * 128) = 37 * 128 = 4736 bytes`
 5. Upload: `fetch('/xiaozhi-api/api/canvas_image?name=freehand_N', { method: 'POST', body: bitmapBuffer })`
-6. Place on canvas: `api.callTool('fridge.canvas.add_image', { id: 'img1', name: 'freehand_N', x: 0, y: 0, w: 296, h: 128, refresh: true })`
+6. Place on canvas: `api.callTool('fridge.canvas.control', { action: 'add_image', id: 'img1', name: 'freehand_N', x: 0, y: 0, w: 296, h: 128, refresh: true })`
 
 See `docs/web-console.md` and `docs/canvas-web-interaction.md` for the full
 browser-side implementation.
@@ -232,6 +257,7 @@ browser-side implementation.
 | Field | Meaning |
 |-------|---------|
 | `dish_name` | Recommended dish name |
+| `summary` | Brief recommendation reason (new in v1.6.0+) |
 | `cooking_time` | e.g. "20分钟" |
 | `required_ingredients` | Comma-separated list the dish needs |
 | `extra_ingredients` | Auto-filled missing ingredients (in `mixed_purchase` mode) |

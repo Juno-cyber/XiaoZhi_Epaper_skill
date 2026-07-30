@@ -34,14 +34,14 @@ echo "=== Setting up todo list page $PAGE on $IP ==="
 echo "=== Items: $ITEM1 / $ITEM2 / $ITEM3 ==="
 
 # 1. Rename page (assumes page already exists; create first if needed)
-call "{\"tool\":\"fridge.page.rename\",\"args\":{\"page\":$PAGE,\"name\":\"待办事项\"}}"
+call "{\"tool\":\"fridge.page.control\",\"args\":{\"action\":\"rename\",\"page\":$PAGE,\"name\":\"待办事项\"}}"
 
 # 2. Clear any existing elements
-call "{\"tool\":\"fridge.page.clear\",\"args\":{\"page\":$PAGE,\"refresh\":false}}"
+call "{\"tool\":\"fridge.page.control\",\"args\":{\"action\":\"clear\",\"page\":$PAGE,\"refresh\":false}}"
 
 # 3. Title + separator (batch mode: refresh=false)
-call "{\"tool\":\"fridge.page.element.add\",\"args\":{\"page\":$PAGE,\"id\":\"title\",\"type\":\"text\",\"text\":\"待办事项\",\"x\":8,\"y\":2,\"font_size\":12,\"align\":\"left\",\"refresh\":false}}"
-call "{\"tool\":\"fridge.page.element.add\",\"args\":{\"page\":$PAGE,\"id\":\"sep\",\"type\":\"line\",\"x\":0,\"y\":0,\"x1\":0,\"y1\":18,\"x2\":296,\"y2\":18,\"width\":1,\"refresh\":false}}"
+call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"title\",\"type\":\"text\",\"text\":\"待办事项\",\"x\":8,\"y\":2,\"font_size\":12,\"align\":\"left\",\"refresh\":false}}"
+call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"sep\",\"type\":\"line\",\"x\":0,\"y\":0,\"x1\":0,\"y1\":18,\"x2\":296,\"y2\":18,\"width\":1,\"refresh\":false}}"
 
 # 4. Three todo items (checkbox + text pairs)
 #    Compact 12px layout: row spacing 18px, checkbox 6×6
@@ -52,15 +52,15 @@ for i in 1 2 3; do
     2) TEXT="$ITEM2"; Y=42 ;;
     3) TEXT="$ITEM3"; Y=60 ;;
   esac
-  call "{\"tool\":\"fridge.page.element.add\",\"args\":{\"page\":$PAGE,\"id\":\"box$i\",\"type\":\"rect\",\"x\":6,\"y\":$Y,\"w\":6,\"h\":6,\"filled\":false,\"refresh\":false}}"
-  call "{\"tool\":\"fridge.page.element.add\",\"args\":{\"page\":$PAGE,\"id\":\"item$i\",\"type\":\"text\",\"text\":\"$TEXT\",\"x\":20,\"y\":$Y,\"font_size\":12,\"align\":\"left\",\"dynamic\":true,\"refresh\":false}}"
+  call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"box$i\",\"type\":\"rect\",\"x\":6,\"y\":$Y,\"w\":6,\"h\":6,\"filled\":false,\"refresh\":false}}"
+  call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"item$i\",\"type\":\"text\",\"text\":\"$TEXT\",\"x\":20,\"y\":$Y,\"font_size\":12,\"align\":\"left\",\"dynamic\":true,\"refresh\":false}}"
 done
 
 # 5. Bottom hint
-call "{\"tool\":\"fridge.page.element.add\",\"args\":{\"page\":$PAGE,\"id\":\"hint\",\"type\":\"text\",\"text\":\"说\\\"提醒我...\\\"添加待办\",\"x\":8,\"y\":112,\"font_size\":12,\"align\":\"left\",\"refresh\":false}}"
+call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"hint\",\"type\":\"text\",\"text\":\"说\\\"提醒我...\\\"添加待办\",\"x\":8,\"y\":112,\"font_size\":12,\"align\":\"left\",\"refresh\":false}}"
 
 # 6. Refresh display (all elements added with refresh=false, now flush)
-call "{\"tool\":\"fridge.canvas.refresh\",\"args\":{}}"
+call "{\"tool\":\"fridge.canvas.control\",\"args\":{\"action\":\"refresh\"}}"
 
 # 7. Switch to the page to display
 call "{\"tool\":\"fridge.pagemanager\",\"args\":{\"target_page\":$PAGE}}"
@@ -68,8 +68,8 @@ call "{\"tool\":\"fridge.pagemanager\",\"args\":{\"target_page\":$PAGE}}"
 echo "=== Done. Page $PAGE is now showing the todo list. ==="
 echo ""
 echo "To update an item text:"
-echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.update\",\"args\":{\"page\":$PAGE,\"id\":\"item1\",\"text\":\"新内容\",\"refresh\":true}}'"
+echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"update\",\"page\":$PAGE,\"id\":\"item1\",\"text\":\"新内容\",\"refresh\":true}}'"
 echo ""
 echo "To mark item as done (fill the checkbox):"
-echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.remove\",\"args\":{\"page\":$PAGE,\"id\":\"box1\",\"refresh\":false}}'"
-echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.add\",\"args\":{\"page\":$PAGE,\"id\":\"box1\",\"type\":\"rect\",\"x\":6,\"y\":24,\"w\":6,\"h\":6,\"filled\":true,\"refresh\":true}}'"
+echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"remove\",\"page\":$PAGE,\"id\":\"box1\",\"refresh\":false}}'"
+echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"box1\",\"type\":\"rect\",\"x\":6,\"y\":24,\"w\":6,\"h\":6,\"filled\":true,\"refresh\":true}}'"

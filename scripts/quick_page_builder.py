@@ -124,9 +124,9 @@ def build_page(ip, page, layout_text):
 
         if cmd == "clear":
             if is_canvas:
-                r = call_mcp(ip, "fridge.canvas.clear", {"refresh": False})
+                r = call_mcp(ip, "fridge.canvas.control", {"action": "clear", "refresh": False})
             else:
-                r = call_mcp(ip, "fridge.page.clear", {"page": page, "refresh": False})
+                r = call_mcp(ip, "fridge.page.control", {"action": "clear", "page": page, "refresh": False})
             print(f"  [clear] -> {r.get('status', '?')}")
             time.sleep(0.2)
 
@@ -137,7 +137,7 @@ def build_page(ip, page, layout_text):
             time.sleep(0.3)
 
         elif cmd == "refresh":
-            r = call_mcp(ip, "fridge.canvas.refresh", {})
+            r = call_mcp(ip, "fridge.canvas.control", {"action": "refresh"})
             print(f"  [refresh] -> {r.get('status', '?')}")
 
         elif cmd == "pixart":
@@ -150,10 +150,10 @@ def build_page(ip, page, layout_text):
             elem_id = args.get("id", f"pa_{art}")
             print(f"  [pixart] {art} at ({x},{y})...", end=" ")
             ensure_pixart(ip, art)
-            mcp_args = {"id": elem_id, "name": art, "x": x, "y": y, "w": w, "h": h, "refresh": False}
+            mcp_args = {"action": "add_image", "id": elem_id, "name": art, "x": x, "y": y, "w": w, "h": h, "refresh": False}
             if not is_canvas:
                 mcp_args["page"] = page
-            r = call_mcp(ip, f"{tool_prefix}.add_image", mcp_args)
+            r = call_mcp(ip, f"{tool_prefix}.control", mcp_args)
             elem_count += 1
             print(f"-> {r.get('status', '?')}")
             time.sleep(0.15)
@@ -162,13 +162,15 @@ def build_page(ip, page, layout_text):
             args = parse_kv(rest)
             if "refresh" not in args:
                 args["refresh"] = False
-            if not is_canvas:
-                args["page"] = page
             actual_cmd = "text" if cmd == "label" else cmd
+            mcp_args = {"action": f"add_{actual_cmd}"}
+            mcp_args.update(args)
+            if not is_canvas:
+                mcp_args["page"] = page
             desc_val = args.get("text", args.get("id", "?"))
             desc = str(desc_val)[:40]
             print(f"  [{actual_cmd}] {desc}...", end=" ")
-            r = call_mcp(ip, f"{tool_prefix}.add_{actual_cmd}", args)
+            r = call_mcp(ip, f"{tool_prefix}.control", mcp_args)
             elem_count += 1
             print(f"-> {r.get('status', '?')}")
             time.sleep(0.15)
