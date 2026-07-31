@@ -191,6 +191,16 @@ Vertical divider at **x=185**. Each zone has a HARD width limit:
 
 If content exceeds the zone width, **shorten the text** or **reflow to full-width (start at x=0)**.
 
+### Text Alignment & `x` Semantics (ESP32 vs HTML Canvas)
+
+**ESP32 `align=center`**: `x` is the **LEFT EDGE** of the centering region, NOT the text center point. Text is centered within `[x, x+max_width]`, where `max_width` defaults to 276 (full screen width). Effective text center = `x + max_width/2`.
+
+- To truly center on the 296px screen: use `x=0` or `x=10` with `align=center` (NOT `x=148`)
+- `x=148, align=center` → centers within [148, 424] → text appears **far right** ⚠️
+- `align=right`: `x` is the right edge. Left edge = `x - text_width`.
+
+**HTML Canvas discrepancy**: `ctx.textAlign='center'` treats `x` as the text's center point — opposite of ESP32. Web console preview must compensate: `drawX = elem.x + (elem.max_width || 276) / 2` for center, `drawX = elem.x + (elem.max_width || 276)` for right. Without this, preview looks correct but physical screen shows text shifted right.
+
 ### Font
 
 Only 2 sizes: `≤12` = 12px, `>12` = 16px. Passing `font_size=10` → 12px; `font_size=14` → 16px.
@@ -236,6 +246,7 @@ Baud = **115200** (NOT 921600). Prerequisites: `pip install pyserial`, port perm
 13. **Text auto-wrap** → split Chinese text > ~8 chars (16px) into separate elements on different y positions.
 14. **No auth** → any device on same LAN can call API. Use only on trusted networks.
 15. **Text overflow right boundary** → the #1 layout bug. Before placing ANY text, compute: `x + chars×char_width ≤ 291`. Font 16 = 16px/char, font 12 = 12px/char. Split-screen right zone (110px) fits only 6 chars at 16px. If text won't fit at current x, either: (a) start at x=0 for full width, (b) shorten the text, or (c) split into multiple shorter lines at different y.
+16. **`align=center` x is region left edge, not text center** → ESP32 centers text within `[x, x+max_width]` (max_width defaults to 276). `x=148, align=center` does NOT center at pixel 148 — it centers within [148,424], making text appear far right. To truly center: use `x=0` or `x=10` with `align=center`. HTML Canvas `textAlign='center'` is the opposite (x = text center), so web preview must compensate: `drawX = elem.x + (elem.max_width || 276) / 2`.
 
 Firmware development pitfalls (partition table, serial, crashes, CORS, persistence bugs):
 → `docs/firmware-development.md`.

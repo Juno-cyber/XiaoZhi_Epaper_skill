@@ -21,8 +21,8 @@ Screen: 296×128 pixels. Safe area: x∈[5,291], y∈[5,123].
 
 ```
  y=0  ┌──────────────────────────────────────────┐
- y=4  │           14:31                          │  clock (dynamic_type, font=16, center, x=148,y=4)
- y=22 │         2026-07-09 周三                  │  date (dynamic_type, font=12, center, x=148,y=22)
+ y=4  │           14:31                          │  clock (dynamic_type, font=16, center, x=10,y=4)
+ y=22 │         2026-07-09 周三                  │  date (dynamic_type, font=12, center, x=10,y=22)
  y=40 ══════════════════════════════════════════════  separator line (x:10→286, y=40)
  y=48 │  ☀ 晴 28°C                              │  weather (Agent-pushed, font=12, x=20,y=48)
  y=68 │  湿度 45% · 风 3级                       │  weather detail (Agent-pushed, font=12, x=20,y=68)
@@ -31,8 +31,8 @@ Screen: 296×128 pixels. Safe area: x∈[5,291], y∈[5,123].
 ```
 
 Elements:
-- `clock`: text, dynamic_type="clock", x=148, y=4, font_size=16, align=center
-- `date`: text, dynamic_type="date", x=148, y=22, font_size=12, align=center
+- `clock`: text, dynamic_type="clock", x=10, y=4, font_size=16, align=center
+- `date`: text, dynamic_type="date", x=10, y=22, font_size=12, align=center
 - `sep`: line, x1=10, y1=40, x2=286, y2=40, width=1
 - `weather_main`: text, x=20, y=48, font_size=12 (Agent cron pushes "☀ 晴 28°C")
 - `weather_detail`: text, x=20, y=68, font_size=12 (Agent cron pushes "湿度 45%")
