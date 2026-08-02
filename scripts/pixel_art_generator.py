@@ -2,8 +2,8 @@
 """pixel_art_generator.py — 生成 24×24 像素画 1-bpp 位图并上传到设备。
 
 用法:
-  python3 pixel_art_generator.py --upload <IP>          # 上传全部
-  python3 pixel_art_generator.py --upload <IP> heart star  # 上传指定
+  python3 pixel_art_generator.py --upload 192.168.1.10          # 上传全部
+  python3 pixel_art_generator.py --upload 192.168.1.10 heart star  # 上传指定
   python3 pixel_art_generator.py --list                          # 列出可用
   python3 pixel_art_generator.py --dump heart /tmp/heart.bin      # 导出单文件
 """

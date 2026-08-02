@@ -2,9 +2,9 @@
 """quick_page_builder.py — 快速构建小智墨水屏画布页面。
 
 用法:
-  python3 quick_page_builder.py <IP> 6 layout.txt
-  echo '<layout>' | python3 quick_page_builder.py <IP> 6
-  python3 quick_page_builder.py <IP> 6 - << 'EOF'
+  python3 quick_page_builder.py 192.168.1.10 6 layout.txt
+  echo '<layout>' | python3 quick_page_builder.py 192.168.1.10 6
+  python3 quick_page_builder.py 192.168.1.10 6 - << 'EOF'
   ... layout ...
   EOF
 
@@ -124,9 +124,9 @@ def build_page(ip, page, layout_text):
 
         if cmd == "clear":
             if is_canvas:
-                r = call_mcp(ip, "fridge.canvas.control", {"action": "clear", "refresh": False})
+                r = call_mcp(ip, "fridge.canvas.clear", {"refresh": False})
             else:
-                r = call_mcp(ip, "fridge.page.control", {"action": "clear", "page": page, "refresh": False})
+                r = call_mcp(ip, "fridge.page.clear", {"page": page, "refresh": False})
             print(f"  [clear] -> {r.get('status', '?')}")
             time.sleep(0.2)
 
@@ -137,7 +137,7 @@ def build_page(ip, page, layout_text):
             time.sleep(0.3)
 
         elif cmd == "refresh":
-            r = call_mcp(ip, "fridge.canvas.control", {"action": "refresh"})
+            r = call_mcp(ip, "fridge.canvas.refresh", {})
             print(f"  [refresh] -> {r.get('status', '?')}")
 
         elif cmd == "pixart":
@@ -150,10 +150,10 @@ def build_page(ip, page, layout_text):
             elem_id = args.get("id", f"pa_{art}")
             print(f"  [pixart] {art} at ({x},{y})...", end=" ")
             ensure_pixart(ip, art)
-            mcp_args = {"action": "add_image", "id": elem_id, "name": art, "x": x, "y": y, "w": w, "h": h, "refresh": False}
+            mcp_args = {"id": elem_id, "name": art, "x": x, "y": y, "w": w, "h": h, "refresh": False}
             if not is_canvas:
                 mcp_args["page"] = page
-            r = call_mcp(ip, f"{tool_prefix}.control", mcp_args)
+            r = call_mcp(ip, f"{tool_prefix}.add_image", mcp_args)
             elem_count += 1
             print(f"-> {r.get('status', '?')}")
             time.sleep(0.15)
@@ -162,15 +162,13 @@ def build_page(ip, page, layout_text):
             args = parse_kv(rest)
             if "refresh" not in args:
                 args["refresh"] = False
-            actual_cmd = "text" if cmd == "label" else cmd
-            mcp_args = {"action": f"add_{actual_cmd}"}
-            mcp_args.update(args)
             if not is_canvas:
-                mcp_args["page"] = page
+                args["page"] = page
+            actual_cmd = "text" if cmd == "label" else cmd
             desc_val = args.get("text", args.get("id", "?"))
             desc = str(desc_val)[:40]
             print(f"  [{actual_cmd}] {desc}...", end=" ")
-            r = call_mcp(ip, f"{tool_prefix}.control", mcp_args)
+            r = call_mcp(ip, f"{tool_prefix}.add_{actual_cmd}", args)
             elem_count += 1
             print(f"-> {r.get('status', '?')}")
             time.sleep(0.15)
@@ -184,7 +182,7 @@ def build_page(ip, page, layout_text):
 # Main
 # ============================================================
 if __name__ == "__main__":
-    ip = sys.argv[1] if len(sys.argv) > 1 else "xiaozhi.local"
+    ip = sys.argv[1] if len(sys.argv) > 1 else "192.168.1.10"
     page = int(sys.argv[2]) if len(sys.argv) > 2 else 6
     layout_file = sys.argv[3] if len(sys.argv) > 3 else "/dev/stdin"
 

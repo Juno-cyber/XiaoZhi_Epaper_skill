@@ -4,7 +4,7 @@ xiaozhi Discovery — 局域网自动发现小智设备
 
 发现策略（按优先级）：
   1. mDNS 查询 xiaozhi.local（最快，<100ms）
-  2. 读取已知 IP 缓存 ~/.cache/xiaozhi_ip.txt（上次发现的结果）
+  2. 读取已知 IP 缓存 ~/.hermes/xiaozhi_ip.txt（上次发现的结果）
   3. HTTP 探测缓存 IP 是否还在线
   4. UDP 广播扫描局域网（最慢但最可靠）
 
@@ -35,7 +35,7 @@ DISCOVERY_PORT = 50001  # 用于 UDP 广播探测的端口
 DISCOVERY_MAGIC = b"XIAOZHI_DISCOVER"
 DISCOVERY_RESPONSE = b"XIAOZHI_HERE"
 DISCOVERY_TIMEOUT = 3.0
-CACHE_FILE = os.path.expanduser("~/.cache/xiaozhi_ip.txt")
+CACHE_FILE = os.path.expanduser("~/.hermes/xiaozhi_ip.txt")
 SCAN_PORTS = [8080]
 
 def try_mdns():
