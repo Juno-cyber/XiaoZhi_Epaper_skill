@@ -1,7 +1,7 @@
 ---
 name: xiaozhi-control
 description: "Discover and control xiaozhi ESP32 voice-AI devices on the LAN. Use when user wants to find, health-check, or call MCP tools (fridge management, e-paper page switch, canvas drawing, custom pages, recipes) on a xiaozhi-esp32 device over HTTP."
-version: 1.8.0
+version: 1.9.0
 author: Juno-cyber
 license: MIT
 platforms: [linux, macos, windows]
@@ -82,7 +82,7 @@ EOF
 | `pixart` | `id=.. art=<name> x=.. y=.. w=24 h=24` (auto-generate + upload, cached) |
 | `refresh` | Flush to screen (always last) |
 
-**Pixel art** (13 built-in): heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee, bell.
+**Pixel art** (25 built-in): heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee, bell, umbrella, snow, leaf, cloud, cat, fish, tea, book, gift, bulb, rocket, wind.
 ```bash
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/pixel_art_generator.py --list        # list available
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/pixel_art_generator.py --upload <IP>  # upload all
@@ -262,6 +262,7 @@ Firmware-development pitfalls (partition table, CORS, persistence bugs, crash di
 | `references/custom-pages.md` | Custom page architecture, dynamic elements, layout audits | Building/auditing pages 7-15 |
 | `references/page-templates.md` | 7 ready-made layout templates | Building a common page layout |
 | `references/display-philosophy.md` | 10 design principles + 5 pre-refresh questions | Designing what to show on screen |
+| `references/canvas-creativity.md` | Anti-repeat system: history ledger, content pool, layout rotation, data hooks | Cron auto-refresh keeps every screen different |
 | `references/web-console.md` | Web console setup, CORS, frontend API client | Web console dev/testing |
 | `references/canvas-web-interaction.md` | Canvas interaction patterns (events, brush, dragging) | Browser canvas features |
 | `references/firmware-development.md` | Build/flash/debug, source structure | Firmware changes |

@@ -198,6 +198,180 @@ def gen_bell():
             if draw: pts.append((x, y))
     return pts
 
+# --- Extended icon set (v1.9) ---
+
+def gen_umbrella():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            dx, dy = x - 12, y - 9
+            d = math.hypot(dx, dy)
+            if d <= 9 and y <= 9: draw = True  # dome
+            if 9 <= y <= 10 and 3 <= x <= 21: draw = True  # canopy edge
+            if 11 <= x <= 13 and 10 <= y <= 18: draw = True  # handle shaft
+            if 12 <= y <= 13 and 12 <= x <= 16: draw = True  # handle hook
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_snow():
+    pts = set()
+    cx, cy = 12, 12
+    for k in range(6):
+        ang = k * math.pi / 3
+        dx, dy = math.cos(ang), math.sin(ang)
+        for r in range(1, 9):
+            pts.add((round(cx + dx * r), round(cy + dy * r)))
+        for r in (4, 6):
+            px, py = cx + dx * r, cy + dy * r
+            for s in (1, -1):
+                pts.add((round(px - dy * 2 * s), round(py + dx * 2 * s)))
+    return [(x, y) for x, y in pts if 0 <= x < W and 0 <= y < H]
+
+def gen_leaf():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            dx, dy = (x - 12) / 7.0, (y - 13) / 8.0
+            if dx * dx + dy * dy <= 1.0 and y >= 5:
+                pts.append((x, y))
+    for y in range(6, 20):  # main vein
+        pts.append((12, y))
+    for y in range(19, 24):  # stem
+        pts.append((12, y))
+    for y in range(8, 19, 2):  # side veins
+        off = (y - 8) // 2
+        pts.append((12 - 3 - off, y))
+        pts.append((12 + 3 + off, y))
+    return pts
+
+def gen_cloud():
+    pts = []
+    cs = [((8, 15), 4), ((14, 13), 5), ((19, 15), 3.5)]
+    for y in range(H):
+        for x in range(W):
+            for (c, r) in cs:
+                if math.hypot(x - c[0], y - c[1]) <= r:
+                    pts.append((x, y))
+                    break
+    return pts
+
+def gen_cat():
+    pts = []
+    left_ear = [(6, 5), (6, 11), (11, 7)]
+    right_ear = [(18, 5), (18, 11), (13, 7)]
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            if math.hypot(x - 12, y - 14) <= 6: draw = True  # head
+            if point_in_polygon(x, y, left_ear): draw = True
+            if point_in_polygon(x, y, right_ear): draw = True
+            if math.hypot(x - 9, y - 13) <= 1.2: draw = True  # eyes
+            if math.hypot(x - 15, y - 13) <= 1.2: draw = True
+            if 11 <= x <= 13 and y == 17: draw = True  # nose
+            if y == 16 and (2 <= x <= 6 or 18 <= x <= 22): draw = True  # whiskers
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_fish():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            dx, dy = (x - 11) / 7.0, (y - 12) / 4.5
+            if dx * dx + dy * dy <= 1.0: draw = True  # body
+            if point_in_polygon(x, y, [(17, 7), (23, 12), (17, 17)]): draw = True  # tail
+            if math.hypot(x - 8, y - 11) <= 1.2: draw = True  # eye
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_tea():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            if 11 <= y <= 19:  # cup
+                tl = 6 + (y - 11) * 0.4
+                tr = 18 - (y - 11) * 0.4
+                if tl <= x <= tr and (abs(x - tl) < 1.5 or abs(x - tr) < 1.5 or y in (11, 19)): draw = True
+            if 13 <= y <= 17:  # handle
+                d = math.hypot(x - 20, y - 15)
+                if 19 <= x <= 22 and 1.5 <= d <= 3.5: draw = True
+            if y == 20 and 3 <= x <= 21: draw = True  # saucer
+            if y == 21 and 5 <= x <= 19: draw = True
+            if x in (9, 13) and 4 <= y <= 8:  # steam
+                if (y + x) % 3 != 0: draw = True
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_book():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            if 5 <= y <= 18 and 2 <= x <= 11:  # left page
+                if x == 2 or x == 11 or y == 5 or y == 18: draw = True
+            if 5 <= y <= 18 and 13 <= x <= 22:  # right page
+                if x == 13 or x == 22 or y == 5 or y == 18: draw = True
+            if 11 <= x <= 13 and 5 <= y <= 18: draw = True  # spine
+            if y in (8, 11, 14) and 4 <= x <= 9: draw = True  # text
+            if y in (8, 11, 14) and 15 <= x <= 20: draw = True
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_gift():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            if 8 <= y <= 11 and 3 <= x <= 21:  # lid
+                if x == 3 or x == 21 or y == 8 or y == 11: draw = True
+            if 12 <= y <= 21 and 5 <= x <= 19:  # box
+                if x == 5 or x == 19 or y == 12 or y == 21: draw = True
+            if 11 <= x <= 13 and 8 <= y <= 21: draw = True  # ribbon v
+            if y in (11, 12) and 3 <= x <= 21: draw = True  # ribbon h
+            if math.hypot(x - 10, y - 6) <= 1.5: draw = True  # bow
+            if math.hypot(x - 14, y - 6) <= 1.5: draw = True
+            if 11 <= x <= 13 and 6 <= y <= 8: draw = True
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_bulb():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            if math.hypot(x - 12, y - 9) <= 6: draw = True  # bulb
+            if 10 <= x <= 14 and 15 <= y <= 19:  # base
+                if x == 10 or x == 14 or y == 15 or y == 19: draw = True
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_rocket():
+    pts = []
+    for y in range(H):
+        for x in range(W):
+            draw = False
+            if 4 <= y <= 15 and 9 <= x <= 15: draw = True  # body
+            if 1 <= y <= 4:  # nose cone
+                half = 3 - (y - 1) * 0.8
+                if abs(x - 12) <= half: draw = True
+            if 12 <= y <= 16:  # fins
+                if point_in_polygon(x, y, [(6, 13), (9, 13), (9, 16)]): draw = True
+                if point_in_polygon(x, y, [(18, 13), (15, 13), (15, 16)]): draw = True
+            if point_in_polygon(x, y, [(10, 16), (14, 16), (12, 21)]): draw = True  # flame
+            if draw: pts.append((x, y))
+    return pts
+
+def gen_wind():
+    pts = []
+    for y, x1, x2 in ((7, 4, 16), (12, 8, 20), (17, 4, 18)):
+        for x in range(x1, x2 + 1):
+            pts.append((x, y))
+        pts.append((x2, y + 1))
+        pts.append((x2 + 1, y + 1))
+    return pts
+
 # Registry
 ARTISTS = {
     'heart': gen_heart,
@@ -213,6 +387,18 @@ ARTISTS = {
     'bolt': gen_bolt,
     'coffee': gen_coffee,
     'bell': gen_bell,
+    'umbrella': gen_umbrella,
+    'snow': gen_snow,
+    'leaf': gen_leaf,
+    'cloud': gen_cloud,
+    'cat': gen_cat,
+    'fish': gen_fish,
+    'tea': gen_tea,
+    'book': gen_book,
+    'gift': gen_gift,
+    'bulb': gen_bulb,
+    'rocket': gen_rocket,
+    'wind': gen_wind,
 }
 
 def upload(ip, name, bitmap):
