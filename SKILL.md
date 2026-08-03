@@ -130,9 +130,17 @@ Old tool names (e.g. `fridge.canvas.add_text`) auto-map via `/api/call` but **us
 
 ## Canvas API (Page 6) — `fridge.canvas.control`
 
+> ⚠️ **Firmware v2.0.5 note**: the flashed firmware does NOT register the aggregator
+> `fridge.canvas.control` / `fridge.page.control` — call the **legacy names** directly
+> (`fridge.canvas.add_text`, `fridge.canvas.add_line`, `fridge.canvas.add_rect`,
+> `fridge.canvas.add_image`, `fridge.canvas.remove`, `fridge.canvas.clear`,
+> `fridge.canvas.refresh`, `fridge.canvas.list`). `quick_page_builder.py` uses the
+> aggregator and **fails silently** on this firmware — hand-curl instead (pitfall #53).
+> Aggregator names apply only to newer firmware builds.
+
 ```bash
 curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.control","args":{"action":"add_text","id":"t1","text":"Hello","x":10,"y":5,"font_size":16}}'
+  -d '{"tool":"fridge.canvas.add_text","args":{"id":"t1","text":"Hello","x":10,"y":5,"font_size":16}}'
 ```
 
 | Action | Required params |
