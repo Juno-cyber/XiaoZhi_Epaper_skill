@@ -9,9 +9,20 @@
 
 它包含：
 - **SKILL.md** — Agent 可读的技能定义（触发条件、API 参考、工作流）
-- **docs/** — 详细的开发文档（API、固件、Web、模板、设计哲学）
+- **references/** — 详细的参考文档（API、固件、Web、模板、设计哲学、坑清单）
 - **scripts/** — 可直接运行的 Python 工具脚本
 - **templates/** — 即用型页面布局模板
+
+## 部署到 Hermes
+
+仓库是唯一事实源（有 Git 历史与协作），Hermes 运行的是部署副本。修改后一键部署：
+
+```bash
+bash deploy.sh          # 部署到 ~/.hermes/skills/smart-home/xiaozhi-control/
+bash deploy.sh --push   # 部署 + git commit + push
+```
+
+> 注意：`deploy.sh` 的方向是 **仓库 → Hermes**（旧 `sync.sh` 已删除）。只改仓库，不要直接改 Hermes 目录——否则下次部署会被覆盖。
 
 ## 设备要求
 
@@ -43,10 +54,10 @@ curl -X POST http://<IP>:8080/api/call \
   -H "Content-Type: application/json" \
   -d '{"tool":"fridge.pagemanager","args":{"target_page":6}}'
 
-# 在画布上添加文字
+# 在画布上添加文字（聚合工具 + action 分发）
 curl -X POST http://<IP>:8080/api/call \
   -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.add_text","args":{"id":"hello","text":"Hello!","x":10,"y":10,"font_size":16,"align":"left","refresh":true}}'
+  -d '{"tool":"fridge.canvas.control","args":{"action":"add_text","id":"hello","text":"Hello!","x":10,"y":10,"font_size":16,"align":"left","refresh":true}}'
 ```
 
 ### 4. 使用布局 DSL 一键部署
@@ -54,13 +65,15 @@ curl -X POST http://<IP>:8080/api/call \
 ```bash
 python3 scripts/quick_page_builder.py <IP> 6 - << 'EOF'
 clear
-text id=title text="今日待办" x=8 y=2 font_size=12 align=left refresh=false
-line id=sep x1=0 y1=18 x2=296 y2=18 width=1 refresh=false
-text id=item1 text="写论文" x=20 y=24 font_size=12 refresh=false
-text id=item2 text="训模型" x=20 y=42 font_size=12 refresh=false
-text id=item3 text="做饭" x=20 y=60 font_size=12 refresh=true
+text id=title text="今日待办" x=8 y=2 font_size=12 align=left
+line id=sep x1=0 y1=18 x2=296 y2=18 width=1
+text id=item1 text="写论文" x=20 y=24 font_size=12
+text id=item2 text="训模型" x=20 y=42 font_size=12
+text id=item3 text="做饭" x=20 y=60 font_size=12
+refresh
 EOF
 ```
+元素默认 `refresh=false` 批量添加，最后一行 `refresh` 统一刷新。
 
 ## 功能概览
 
@@ -80,13 +93,15 @@ EOF
 | 文档 | 内容 |
 |------|------|
 | [SKILL.md](SKILL.md) | Agent 技能定义 — 触发条件、API 参考、工作流 |
-| [docs/api-reference.md](docs/api-reference.md) | HTTP API + MCP 工具完整参考 |
-| [docs/custom-pages.md](docs/custom-pages.md) | 自定义页面架构、动态元素、持久化 |
-| [docs/page-templates.md](docs/page-templates.md) | 7 种即用型页面布局模板 |
-| [docs/firmware-development.md](docs/firmware-development.md) | 固件编译、烧录、调试、源码结构 |
-| [docs/web-console.md](docs/web-console.md) | Web 控制台搭建、CORS 配置、前端 API |
-| [docs/canvas-web-interaction.md](docs/canvas-web-interaction.md) | 画布交互模式：统一事件、离屏画笔、拖拽 |
-| [docs/display-philosophy.md](docs/display-philosophy.md) | 屏幕设计哲学：10 原则 + 5 问题 |
+| [references/api-reference.md](references/api-reference.md) | HTTP API + MCP 工具完整参考 |
+| [references/pitfalls.md](references/pitfalls.md) | 52 条实战踩坑清单 |
+| [references/custom-pages.md](references/custom-pages.md) | 自定义页面架构、动态元素、持久化 |
+| [references/page-templates.md](references/page-templates.md) | 7 种即用型页面布局模板 |
+| [references/firmware-development.md](references/firmware-development.md) | 固件编译、烧录、调试、源码结构 |
+| [references/web-console.md](references/web-console.md) | Web 控制台搭建、CORS 配置、前端 API |
+| [references/canvas-web-interaction.md](references/canvas-web-interaction.md) | 画布交互模式：统一事件、离屏画笔、拖拽 |
+| [references/display-philosophy.md](references/display-philosophy.md) | 屏幕设计哲学：10 原则 + 5 问题 |
+| [references/hermes-workflow.md](references/hermes-workflow.md) | Hermes 工作流：Web 设计委托、cron 数据推送 |
 
 ## 屏幕设计哲学
 
@@ -94,7 +109,7 @@ EOF
 
 > 你的目标不是"把屏幕填满"，而是"让朋友觉得这一眼值得看"。
 
-详见 [docs/display-philosophy.md](docs/display-philosophy.md)。
+详见 [references/display-philosophy.md](references/display-philosophy.md)。
 
 ## 技术栈
 

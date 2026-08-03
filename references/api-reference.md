@@ -128,7 +128,7 @@ Old tool names (e.g. `fridge.canvas.add_text`, `fridge.page.create`, `fridge.pag
 **Auto-switch on config/startup**: `SetDeviceState(kDeviceStateStarting)` and
 `kDeviceStateWifiConfiguring` now call `display_epaper->SetPage(CHAT_PAGE)` so
 the user always sees connection hints during startup and WiFi config mode. See
-`docs/firmware-development.md` § Device State & E-Paper Page Auto-Switch for
+`references/firmware-development.md` § Device State & E-Paper Page Auto-Switch for
 the critical timing constraint (no `audio_service_` calls in early states).
 
 ## Canvas API (Page 6)
@@ -138,7 +138,7 @@ The canvas page lets the Agent freely place text, lines, and rectangles on the
 
 | action | Description | Key Args |
 |--------|-------------|----------|
-| `add_text` | Place text | `id`, `text`, `x`, `y`, `font_size`(12/16), `align`(left/center/right), `refresh` |
+| `add_text` | Place text | `id`, `text`, `x`, `y`, `font_size`(12/16), `align`(left/center/right), `max_width`(opt, default 276), `refresh` |
 | `add_rect` | Place rectangle | `id`, `x`, `y`, `w`, `h`, `filled`, `refresh` |
 | `add_line` | Place line | `id`, `x1`, `y1`, `x2`, `y2`, `width`, `refresh` |
 | `add_image` | Load image from LittleFS storage | `id`, `name`, `x`, `y`, `w`, `h`, `refresh` |
@@ -241,7 +241,7 @@ For freehand drawing / image insertion from web:
 5. Upload: `fetch('/xiaozhi-api/api/canvas_image?name=freehand_N', { method: 'POST', body: bitmapBuffer })`
 6. Place on canvas: `api.callTool('fridge.canvas.control', { action: 'add_image', id: 'img1', name: 'freehand_N', x: 0, y: 0, w: 296, h: 128, refresh: true })`
 
-See `docs/web-console.md` and `docs/canvas-web-interaction.md` for the full
+See `references/web-console.md` and `references/canvas-web-interaction.md` for the full
 browser-side implementation.
 
 ## Canvas Coordinate System
