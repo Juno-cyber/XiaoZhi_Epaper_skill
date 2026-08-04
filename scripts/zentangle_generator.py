@@ -298,10 +298,315 @@ def gen_ripple_leaf(seed, spacing=6):
     return img
 
 
+# ---------------------------------------------------------------- patterns v2 (classic tangle patterns)
+
+def gen_knightsbridge(seed, brick_h=10):
+    """Knightsbridge 砖墙编织 — offset brick rows with diagonal shading."""
+    rng = random.Random(seed)
+    img = set()
+    bw = 24
+    for row, y0 in enumerate(range(0, H, brick_h)):
+        y1 = min(y0 + brick_h - 1, H - 1)
+        off = (row % 2) * (bw // 2)
+        for x0 in range(-bw, W, bw):
+            x1 = min(x0 + bw - 1, W - 1)
+            # brick outline (skip bottom edge to merge rows)
+            for xx in range(max(0, x0), x1 + 1):
+                img.add((xx, y0))
+                if y1 == H - 1: img.add((xx, y1))
+            for yy in range(y0 + 1, y1):
+                img.add((max(0, x0), yy)); img.add((x1, yy))
+            # diagonal shading inside brick
+            for yy in range(y0 + 2, y1 - 1, 3):
+                xx = x0 + off + (yy - y0)
+                if 0 <= xx <= x1: img.add((xx, yy))
+    return img
+
+def gen_paradox(seed, n=10):
+    """Paradox 帕拉多克斯 — rotating shrinking squares inside a frame."""
+    rng = random.Random(seed)
+    img = set()
+    cx, cy = W / 2, H / 2
+    size = min(W, H) * 0.9
+    ang = rng.uniform(0, math.pi / 4)
+    shrink = 0.88
+    for k in range(n):
+        s = size * (shrink ** k)
+        if s < 3: break
+        a = ang + k * 0.12
+        corners = []
+        for i in range(4):
+            ca = a + i * math.pi / 2
+            corners.append((cx + s * math.cos(ca), cy + s * math.sin(ca)))
+        for i in range(4):
+            x0, y0 = corners[i]; x1, y1 = corners[(i + 1) % 4]
+            steps = max(4, int(s * 0.7))
+            for t in range(steps):
+                xi = int(round(x0 + (x1 - x0) * t / steps))
+                yi = int(round(y0 + (y1 - y0) * t / steps))
+                if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    return img
+
+def gen_printemps(seed, spacing=22, turns=1.4):
+    """Printemps 春 — field of small spirals."""
+    rng = random.Random(seed)
+    img = set()
+    for gy in range(8, H, spacing):
+        for gx in range(8, W, spacing):
+            if rng.random() < 0.25: continue  # sparse
+            cx = gx + rng.uniform(-2, 2); cy = gy + rng.uniform(-2, 2)
+            a = rng.uniform(0.6, 1.1)
+            thmax = turns * 2 * math.pi
+            for i in range(int(thmax / 0.12)):
+                th = i * 0.12
+                r = a * th
+                xi = int(round(cx + r * math.cos(th)))
+                yi = int(round(cy + r * math.sin(th)))
+                if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    return img
+
+def gen_crescent(seed, spacing=20):
+    """Crescent Moon 新月 — arcs with radial hash lines."""
+    rng = random.Random(seed)
+    img = set()
+    for gy in range(14, H, spacing):
+        for gx in range(14, W, spacing):
+            if rng.random() < 0.3: continue
+            cx = gx + rng.uniform(-3, 3); cy = gy + rng.uniform(-3, 3)
+            r = rng.uniform(5, 8)
+            a0 = rng.uniform(0, math.tau)
+            span = math.pi * rng.uniform(0.7, 1.1)
+            # arc
+            n = max(12, int(r * 6))
+            for i in range(n + 1):
+                a = a0 + span * i / n
+                xi = int(round(cx + r * math.cos(a)))
+                yi = int(round(cy + r * math.sin(a)))
+                if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+            # radial hash from center to arc
+            for i in range(0, n + 1, 3):
+                a = a0 + span * i / n
+                for t in range(3, int(r) - 1):
+                    xi = int(round(cx + t * math.cos(a)))
+                    yi = int(round(cy + t * math.sin(a)))
+                    if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    return img
+
+def gen_flux(seed):
+    """Flux 流动 — bundles of parallel flowing curves."""
+    rng = random.Random(seed)
+    img = set()
+    n_bundles = rng.randint(3, 5)
+    for b in range(n_bundles):
+        y_off = rng.randint(15, 110)
+        amp = rng.uniform(6, 14)
+        freq = rng.uniform(0.01, 0.025)
+        phase = rng.uniform(0, math.tau)
+        n_lines = rng.randint(3, 5)
+        for li in range(n_lines):
+            dy = (li - n_lines / 2) * rng.uniform(2.5, 4)
+            for x in range(0, W, 2):
+                y = y_off + dy + amp * math.sin(freq * x + phase + li * 0.3)
+                yi = int(round(y))
+                if 0 <= yi < H:
+                    img.add((x, yi))
+    return img
+
+def gen_mooka(seed):
+    """Mooka 莫卡 — S-curve tendrils with round tips."""
+    rng = random.Random(seed)
+    img = set()
+    n = rng.randint(4, 7)
+    for i in range(n):
+        x0 = rng.randint(10, W - 10)
+        y0 = rng.randint(10, H - 10)
+        length = rng.randint(40, 90)
+        dirn = rng.choice([-1, 1])
+        amp = rng.uniform(4, 8)
+        # S-curve: x = x0 + t*dirn, y = y0 + amp*sin(t*pi/length*2)
+        for t in range(0, length, 2):
+            xx = int(x0 + t * dirn)
+            yy = int(round(y0 + amp * math.sin(t / length * 2 * math.pi)))
+            if 0 <= xx < W and 0 <= yy < H: img.add((xx, yy))
+        # round tip
+        tipx = int(x0 + length * dirn); tipy = int(round(y0))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                img.add((tipx + dx, tipy + dy))
+    return img
+
+def gen_fescu(seed):
+    """Fescu 费斯库 — feather/leaf clusters (spine + diagonal barbs)."""
+    rng = random.Random(seed)
+    img = set()
+    n = rng.randint(3, 5)
+    for i in range(n):
+        x0 = rng.randint(20, W - 20); y0 = rng.randint(15, H - 15)
+        length = rng.randint(30, 70)
+        ang = rng.uniform(-0.8, 0.8)
+        dx, dy = math.cos(ang), math.sin(ang)
+        # spine
+        for t in range(length):
+            xi = int(round(x0 + dx * t)); yi = int(round(y0 + dy * t))
+            if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+        # barbs both sides
+        for t in range(4, length - 2, 4):
+            bx = x0 + dx * t; by = y0 + dy * t
+            nx, ny = -dy, dx  # normal
+            for side in (1, -1):
+                for s in range(3, 9, 3):
+                    xi = int(round(bx + nx * side * s)); yi = int(round(by + ny * side * s))
+                    if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    return img
+
+def gen_betweed(seed):
+    """Betweed 编织带 — interleaving sine bands."""
+    rng = random.Random(seed)
+    img = set()
+    n = rng.randint(3, 5)
+    for i in range(n):
+        yc = rng.randint(15, 113)
+        amp = rng.uniform(8, 16)
+        freq = rng.uniform(0.015, 0.03)
+        phase = rng.uniform(0, math.tau)
+        w = rng.uniform(2.5, 4)
+        for x in range(0, W, 2):
+            y = yc + amp * math.sin(freq * x + phase)
+            for wy in range(-int(w), int(w) + 1):
+                yi = int(round(y + wy))
+                if 0 <= yi < H: img.add((x, yi))
+    return img
+
+def gen_hollibaugh(seed, arch=16):
+    """Hollibaugh 霍利博 — arcade of nested arches."""
+    rng = random.Random(seed)
+    img = set()
+    n_layers = rng.randint(2, 3)
+    for col, x0 in enumerate(range(6, W, arch)):
+        x1 = min(x0 + arch, W - 4)
+        cx = (x0 + x1) / 2
+        for layer in range(n_layers):
+            r = (x1 - x0) * 0.45 + layer * 4
+            for i in range(0, 19):
+                a = math.pi * i / 18  # top half only
+                xi = int(round(cx + r * math.cos(math.pi - a)))
+                yi = int(round(H - 6 - r * math.sin(a)))
+                if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    return img
+
+def gen_weave(seed, spacing=10):
+    """Weave 编织篮 — diagonal basket weave (45° cross-hatch with gaps)."""
+    rng = random.Random(seed)
+    img = set()
+    for i in range(-H, W + H, spacing):
+        for j in range(0, H, 2):
+            x = i + j; y = j
+            if 0 <= x < W and 0 <= y < H: img.add((x, y))
+    for i in range(-H, W + H, spacing):
+        for j in range(0, H, 2):
+            x = i - j + H; y = j
+            if 0 <= x < W and 0 <= y < H: img.add((x, y))
+    return img
+
+def gen_scale(seed, scale=16):
+    """Scale 鱼鳞 — overlapping semicircle scales."""
+    rng = random.Random(seed)
+    img = set()
+    r = int(scale / 2)
+    for row in range(0, H + r, r):
+        off = (row // r) % 2 * r
+        for cx in range(0, W + r, r * 2):
+            xx = cx + off
+            for i in range(19):
+                a = math.pi * i / 18
+                xi = int(round(xx + r * math.cos(a)))
+                yi = int(round(row + r - r * math.sin(a)))  # arch up
+                if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    return img
+
+def gen_rose(seed, k=None):
+    """Rose 玫瑰线 — r = a*cos(kθ) flower curves."""
+    rng = random.Random(seed)
+    img = set()
+    cx, cy = W / 2, H / 2
+    k = k or rng.choice([3, 4, 5, 6])
+    a = min(W, H) * 0.42
+    for i in range(2000):
+        th = i / 2000 * 2 * math.pi * 4
+        r = a * math.cos(k * th)
+        if r < 0: continue
+        x = cx + r * math.cos(th); y = cy + r * math.sin(th)
+        xi, yi = int(round(x)), int(round(y))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if 0 <= xi + dx < W and 0 <= yi + dy < H: img.add((xi + dx, yi + dy))
+    return img
+
+def gen_lissajous(seed):
+    """Lissajous 利萨茹 — parametric closed curves."""
+    rng = random.Random(seed)
+    img = set()
+    cx, cy = W / 2, H / 2
+    ax, ay = min(W, H) * 0.4, min(W, H) * 0.35
+    na = rng.choice([3, 4, 5]); nb = rng.choice([4, 5, 6])
+    delta = rng.uniform(0, math.pi / 2)
+    n = 4000
+    for i in range(n):
+        t = i / n * 2 * math.pi * (na if nb % 2 == 0 else 1) * 4
+        x = cx + ax * math.sin(na * t + delta)
+        y = cy + ay * math.sin(nb * t)
+        xi, yi = int(round(x)), int(round(y))
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if 0 <= xi + dx < W and 0 <= yi + dy < H: img.add((xi + dx, yi + dy))
+    return img
+
+def gen_aster(seed):
+    """Aster 星芒 — radial burst with dotted rings."""
+    rng = random.Random(seed)
+    img = set()
+    cx, cy = W / 2, H / 2
+    n_rays = rng.choice([12, 16, 20])
+    rmax = max(W, H) * 0.7
+    for k in range(n_rays):
+        a = 2 * math.pi * k / n_rays + rng.uniform(-0.02, 0.02)
+        for r in range(0, int(rmax), 2):
+            xi = int(round(cx + r * math.cos(a)))
+            yi = int(round(cy + r * math.sin(a)))
+            if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    # dotted rings
+    for ring, rr in enumerate(range(14, int(rmax * 0.9), 16)):
+        for i in range(48):
+            a = 2 * math.pi * i / 48
+            xi = int(round(cx + rr * math.cos(a)))
+            yi = int(round(cy + rr * math.sin(a)))
+            if 0 <= xi < W and 0 <= yi < H: img.add((xi, yi))
+    return img
+
+def gen_stipple(seed):
+    """Stipple 点彩 — dot density gradient (dense center → sparse edges)."""
+    rng = random.Random(seed)
+    img = set()
+    cx, cy = W / 2, H / 2
+    rmax = math.hypot(cx, cy)
+    for y in range(0, H, 2):
+        for x in range(0, W, 2):
+            d = math.hypot(x - cx, y - cy) / rmax
+            p = max(0.05, 0.65 - d * 0.7)
+            if rng.random() < p:
+                img.add((x, y))
+    return img
+
+
 PATTERNS = {
     'waves': gen_waves, 'concentric': gen_concentric, 'spiral': gen_spiral,
     'grid': gen_grid_tangle, 'vine': gen_vine, 'honeycomb': gen_honeycomb,
     'mandala': gen_zen_circle, 'meander': gen_meander, 'ripple': gen_ripple_leaf,
+    'knightsbridge': gen_knightsbridge, 'paradox': gen_paradox, 'printemps': gen_printemps,
+    'crescent': gen_crescent, 'flux': gen_flux, 'mooka': gen_mooka,
+    'fescu': gen_fescu, 'betweed': gen_betweed, 'hollibaugh': gen_hollibaugh,
+    'weave': gen_weave, 'scale': gen_scale, 'rose': gen_rose,
+    'lissajous': gen_lissajous, 'aster': gen_aster, 'stipple': gen_stipple,
 }
 
 # ---------------------------------------------------------------- render/convert
@@ -355,13 +660,15 @@ def main():
         return
 
     if args.preview:
-        names = ['waves', 'concentric', 'spiral', 'grid', 'vine', 'honeycomb', 'mandala', 'meander', 'ripple']
+        names = ['waves', 'concentric', 'spiral', 'grid', 'vine', 'honeycomb', 'mandala', 'meander', 'ripple',
+                 'knightsbridge', 'paradox', 'printemps', 'crescent', 'flux', 'mooka', 'fescu', 'betweed',
+                 'hollibaugh', 'weave', 'scale', 'rose', 'lissajous', 'aster', 'stipple']
         from PIL import Image, ImageDraw, ImageFont
         try:
             font = ImageFont.truetype('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', 14)
         except Exception:
             font = ImageFont.load_default()
-        cols = 3; cell_w = W * 2; cell_h = H * 2 + 26
+        cols = 4; cell_w = W * 2; cell_h = H * 2 + 26
         rows = (len(names) + cols - 1) // cols
         grid = Image.new('RGB', (cols * cell_w, rows * cell_h), '#dddddd')
         gd = ImageDraw.Draw(grid)
