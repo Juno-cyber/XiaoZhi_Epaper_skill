@@ -88,6 +88,25 @@ python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/pixel_art_generator.
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/pixel_art_generator.py --upload <IP>  # upload all
 ```
 
+**Zentangle (禅绕画) generator** — procedural full-screen 296x128 line art, infinite variety via seed:
+```bash
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py --list     # patterns: waves concentric spiral grid vine honeycomb mandala meander ripple
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py --preview  # render 9-sample PNG grid
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py --upload <IP> --pattern mandala --name z1 --seed 42   # upload to LittleFS
+# then: fridge.canvas.clear → fridge.canvas.add_image {id:"z1", name:"z1", x:0, y:0, w:296, h:128} → refresh
+# Best-looking: mandala, vine, waves, meander. Dense patterns (honeycomb/grid) may ghost on e-paper.
+```
+
+**Quote fetcher** — daily-quote APIs for fresh copy (free, no key; dedups against history):
+```bash
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py              # 一言·文学
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --cat i     # 诗词
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source jinrishici   # 今日诗词
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source iciba        # 每日一句
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source pool         # 本地素材池 fallback
+# Sources: hitokoto (c=d文学/i诗词/k哲学), jinrishici, iciba, local pool. Output: 「text」 — source
+```
+
 ## MCP Tools Overview (14 total)
 
 All called via `POST /api/call` → `{"tool":"...","args":{...}}`. Two endpoints exist:

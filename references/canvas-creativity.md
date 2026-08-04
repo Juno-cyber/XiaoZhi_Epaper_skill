@@ -40,11 +40,21 @@ Agent 按主意图挑 2-3 条 → 重组/改写/拼接 → 最多加 10 字原�
 
 | 钩子 | 命令 | 产出 |
 |------|------|------|
+| 文案 API | `quote_fetcher.py` | 一言(文学/诗词/哲学)、今日诗词、每日一句 — 自动去重 |
 | 冰箱 | `fridge.stats.summary` | 件数/临期/品类 → 洞察文案 |
 | 天气 | `curl -s 'https://wttr.in/?format=%C+%t&lang=zh'` | 带伞/加衣/听雨 |
 | 时间 | `date` + 节气表 | 星期几/月初月末/节气 |
 
-规则：有数据变化 → 讲数据；没变化 → 素材池。
+规则：有数据变化 → 讲数据；文案 API 命中新句子 → 优先用（改写适配屏幕）；都没变 → 素材池。
+
+## 视觉丰富度：禅绕画 (Zentangle)
+
+24x24 图标之外的第二级视觉：**程序化生成全屏 296x128 线条画**（`scripts/zentangle_generator.py`）。
+- 9 种图案模块：waves/concentric/spiral/grid/vine/honeycomb/mandala/meander/ripple
+- 随机种子 → 每次不同；1-bit 位图 4736B 直接上传 LittleFS
+- 最佳观感：mandala(曼陀罗)、vine(藤蔓)、waves(波浪)、meander(回纹)
+- 适配时段：安静/夜晚/冥想场景纯图案；或底部留白叠一行小字
+- 注意：密集图案(honeycomb/grid)刷新残影明显，优先用稀疏线条款
 
 ## 意图权重（代替固定内容模板）
 
