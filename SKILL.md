@@ -97,14 +97,16 @@ python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.
 # Best-looking: mandala, vine, waves, meander, paradox, rose, printemps, stipple. Dense patterns (honeycomb/grid/knightsbridge) may ghost on e-paper.
 ```
 
-**Quote fetcher** — daily-quote APIs for fresh copy (free, no key; dedups against history):
+**Quote fetcher** — daily-quote APIs for fresh copy (free, no key; dedups against history; audit log):
 ```bash
-python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py              # 一言·文学
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py              # 一言·文学 (90%+ 主文案来源)
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --cat i     # 诗词
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --cat k     # 哲学
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source jinrishici   # 今日诗词
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source iciba        # 每日一句
-python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source pool         # 本地素材池 fallback
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source pool         # 本地素材池 (仅 API 全挂兜底)
 # Sources: hitokoto (c=d文学/i诗词/k哲学), jinrishici, iciba, local pool. Output: 「text」 — source
+# ⚠️ 画布 cron 主文案 90%+ 必须来自此脚本输出；审计日志 ~/.hermes/xiaozhi_canvas/quote_log.jsonl
 ```
 
 ## MCP Tools Overview (14 total)

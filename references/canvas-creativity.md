@@ -33,8 +33,26 @@
 ### 2. 素材层：内容池 `~/.hermes/xiaozhi_canvas/content_pool.md`
 
 约 80 条带标签句子（`鼓励/安静/陪伴/玩味/洞察/提醒/食物/时节/天气/自指`）。
-Agent 按主意图挑 2-3 条 → 重组/改写/拼接 → 最多加 10 字原创。
+**⚠️ 自 2026-08-04 起降级为兜底**：主文案 **90%+ 必须来自文本库 API**（quote_fetcher.py）。
+素材池仅用于：① API 连续 3 源失败时兜底；② 与 API 句拼接做改写（主体仍是 API 句）。
 附录含 8 种版式原型结构速查 + 2026 常用节气表（前后 1 天算）。
+
+### 2b. 文本库 API（主文案来源，90%+ 强制）
+
+`scripts/quote_fetcher.py` — 聚合 4 个免费无 key 文案 API，自动去重（14 天台账）+ 审计日志（`~/.hermes/xiaozhi_canvas/quote_log.jsonl`，每次调用留痕，可核对出处）：
+
+| 源 | 命令 | 分类 |
+|----|------|------|
+| 一言 hitokoto | `--cat d` 文学 / `--cat i` 诗词 / `--cat k` 哲学 / 默认顺序 | 文学/诗词/哲学/动漫 |
+| 今日诗词 jinrishici | `--source jinrishici` | 带季节标签 |
+| 金山词霸每日一句 | `--source iciba` | 中英对照 |
+| 素材池（兜底） | `--source pool` | 仅 API 全挂时 |
+
+**规则**（cron prompt 强制执行）：
+1. 主体文案必须来自 quote_fetcher 输出 `text` 原句（可截断/拆行适配屏幕），脚注照抄 `source`
+2. 失败则换类别重试（`--cat i` → `--cat k` → `--source jinrishici` → `--source iciba`）
+3. 连续 3 源失败才允许数据钩子/素材池
+4. 禁止不调用 quote_fetcher 就自称"一言来源"；台账 text 必须带真实出处
 
 ### 3. 数据层：真实世界钩子
 
@@ -45,16 +63,16 @@ Agent 按主意图挑 2-3 条 → 重组/改写/拼接 → 最多加 10 字原�
 | 天气 | `curl -s 'https://wttr.in/?format=%C+%t&lang=zh'` | 带伞/加衣/听雨 |
 | 时间 | `date` + 节气表 | 星期几/月初月末/节气 |
 
-规则：有数据变化 → 讲数据；文案 API 命中新句子 → 优先用（改写适配屏幕）；都没变 → 素材池。
+规则：**90%+ 主体文案来自文本库 API**（quote_fetcher.py，见 §2b）；数据钩子（冰箱/天气）只做脚注叠加；素材池仅 API 全挂时兜底。
 
 ## 视觉丰富度：禅绕画 (Zentangle)
 
-24x24 图标之外的第二级视觉：**程序化生成全屏 296x128 线条画**（`scripts/zentangle_generator.py`）。
-- 9 种图案模块：waves/concentric/spiral/grid/vine/honeycomb/mandala/meander/ripple
-- 随机种子 → 每次不同；1-bit 位图 4736B 直接上传 LittleFS
-- 最佳观感：mandala(曼陀罗)、vine(藤蔓)、waves(波浪)、meander(回纹)
-- 适配时段：安静/夜晚/冥想场景纯图案；或底部留白叠一行小字
-- 注意：密集图案(honeycomb/grid)刷新残影明显，优先用稀疏线条款
+24x24 图标之外的第二级视觉：**程序化生成角落装饰图案**（`scripts/zentangle_generator.py`）。
+- 24 种图案模块；**方案A（2026-08-04 起）**：禅绕画只作**角落小区域点缀**（带 1px 边框的"画框"），图文分区，不再全屏背景
+- 角落区域预设：右上(196,6,92,62) / 右下(196,66,92,56) / 左上(6,6,92,62) / 中上横幅(102,8,92,62)
+- 生成命令：`zentangle_generator.py --upload <IP> --pattern <名字> --name zp --region 196,6,92,62 --seed $RANDOM`
+- 适合角落：mandala paradox rose aster spiral concentric lissajous stipple printemps crescent waves flux betweed scale weave grid knightsbridge
+- 适配时段：安静/夜晚/冥想场景；文字与禅绕区保持 8px+ 间距
 
 ## 意图权重（代替固定内容模板）
 
