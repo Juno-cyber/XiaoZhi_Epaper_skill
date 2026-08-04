@@ -16,10 +16,25 @@ Usage:
   quote_fetcher.py --all              # try all sources, print each candidate
   quote_fetcher.py --raw              # print raw JSON line
 """
-import argparse, json, os, random, re, sys, urllib.request
+import argparse, json, os, random, re, sys, urllib.request, datetime
 
 POOL = os.path.expanduser('~/.hermes/xiaozhi_canvas/content_pool.md')
 HIST = os.path.expanduser('~/.hermes/xiaozhi_canvas/history.jsonl')
+QLOG = os.path.expanduser('~/.hermes/xiaozhi_canvas/quote_log.jsonl')
+
+def log_quote(q):
+    """Append a fetch record to the quote log (audit trail: proves real API calls)."""
+    try:
+        rec = {
+            'ts': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'source': q.get('source', ''),
+            'category': q.get('category', ''),
+            'text': q.get('text', '')[:40],
+        }
+        with open(QLOG, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
 
 def http_get(url, timeout=8):
     req = urllib.request.Request(url, headers={'User-Agent': 'hermes-canvas/1.0'})
@@ -142,6 +157,7 @@ def main():
         if is_repeat(chosen['text'], recent):
             chosen['text'] = chosen['text'] + '（换个说法）'
     chosen['used_recently'] = tried
+    log_quote(chosen)   # audit trail
     if args.raw:
         print(json.dumps(chosen, ensure_ascii=False))
     else:

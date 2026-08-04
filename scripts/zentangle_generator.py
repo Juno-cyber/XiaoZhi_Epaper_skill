@@ -609,6 +609,115 @@ PATTERNS = {
     'lissajous': gen_lissajous, 'aster': gen_aster, 'stipple': gen_stipple,
 }
 
+# Patterns suitable for local-region (patch) rendering:
+#  - center-based: recentered to region center (complete motif inside region)
+#  - tiling: uniform, clip works
+#  - NOT suitable: meander/hollibaugh (edge-anchored), vine/fescu/mooka/ripple (random scatter, may clip empty)
+PATCH_OK = {
+    'spiral', 'concentric', 'mandala', 'rose', 'aster', 'lissajous', 'paradox',
+    'waves', 'flux', 'printemps', 'crescent', 'stipple', 'scale', 'weave',
+    'betweed', 'grid', 'knightsbridge',
+}
+
+def gen_patch(pattern, seed, x0, y0, w, h):
+    """Generate a pattern confined to region (x0, y0, w, h), absolute coords.
+    Center-based patterns recenter to the region center; tiling patterns clip."""
+    rng = random.Random(seed)
+    cx, cy = x0 + w / 2.0, y0 + h / 2.0
+    X1, Y1 = x0 + w, y0 + h
+    pts = set()
+
+    def _in(x, y):
+        return x0 <= x < X1 and y0 <= y < Y1
+
+    if pattern == 'spiral':
+        a = rng.uniform(0.9, 1.3)
+        rmax = math.hypot(w, h) / 2
+        for i in range(int((rmax / a) / 0.14)):
+            th = i * 0.14
+            r = a * th
+            xi, yi = int(round(cx + r * math.cos(th))), int(round(cy + r * math.sin(th)))
+            if _in(xi, yi): pts.add((xi, yi))
+    elif pattern == 'concentric':
+        spacing = max(4, min(w, h) // 12)
+        rmax = math.hypot(w, h) / 2
+        for k in range(1, int(rmax // spacing) + 1):
+            r = 2 + k * spacing
+            steps = max(24, int(4 * math.pi * r))
+            for i in range(steps):
+                a = 2 * math.pi * i / steps
+                xi, yi = int(round(cx + r * math.cos(a))), int(round(cy + r * math.sin(a)))
+                if _in(xi, yi): pts.add((xi, yi))
+    elif pattern == 'mandala':
+        R = min(w, h) * 0.42
+        steps = int(2 * math.pi * R)
+        for i in range(steps):
+            a = 2 * math.pi * i / steps
+            xi, yi = int(round(cx + R * math.cos(a))), int(round(cy + R * math.sin(a)))
+            if _in(xi, yi): pts.add((xi, yi))
+        n_spokes = rng.choice([8, 12])
+        for k in range(n_spokes):
+            a0 = 2 * math.pi * k / n_spokes
+            for t in range(0, int(R), 2):
+                xi, yi = int(round(cx + t * math.cos(a0))), int(round(cy + t * math.sin(a0)))
+                if _in(xi, yi): pts.add((xi, yi))
+        for i in range(48):
+            a = 2 * math.pi * i / 48
+            r = R * 0.55
+            xi, yi = int(round(cx + r * math.cos(a))), int(round(cy + r * math.sin(a)))
+            if _in(xi, yi): pts.add((xi, yi))
+    elif pattern == 'rose':
+        k = rng.choice([3, 4, 5])
+        a = min(w, h) * 0.4
+        for i in range(2000):
+            th = i / 2000 * 2 * math.pi * 4
+            r = a * math.cos(k * th)
+            if r < 0: continue
+            xi, yi = int(round(cx + r * math.cos(th))), int(round(cy + r * math.sin(th)))
+            if _in(xi, yi):
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        if _in(xi + dx, yi + dy): pts.add((xi + dx, yi + dy))
+    elif pattern == 'aster':
+        n_rays = rng.choice([8, 12])
+        rmax = max(w, h) * 0.6
+        for k in range(n_rays):
+            a = 2 * math.pi * k / n_rays
+            for r in range(0, int(rmax), 2):
+                xi, yi = int(round(cx + r * math.cos(a))), int(round(cy + r * math.sin(a)))
+                if _in(xi, yi): pts.add((xi, yi))
+    elif pattern == 'lissajous':
+        ax, ay = w * 0.36, h * 0.34
+        na, nb = rng.choice([3, 4]), rng.choice([4, 5])
+        delta = rng.uniform(0, math.pi / 2)
+        for i in range(4000):
+            t = i / 4000 * 2 * math.pi * (na if nb % 2 == 0 else 1) * 4
+            xi, yi = int(round(cx + ax * math.sin(na * t + delta))), int(round(cy + ay * math.sin(nb * t)))
+            if _in(xi, yi):
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        if _in(xi + dx, yi + dy): pts.add((xi + dx, yi + dy))
+    elif pattern == 'paradox':
+        size = min(w, h) * 0.9
+        ang = rng.uniform(0, math.pi / 4)
+        for k in range(10):
+            s = size * (0.88 ** k)
+            if s < 3: break
+            a = ang + k * 0.12
+            corners = [(cx + s * math.cos(a + i * math.pi / 2), cy + s * math.sin(a + i * math.pi / 2)) for i in range(4)]
+            for i in range(4):
+                xc0, yc0 = corners[i]; xc1, yc1 = corners[(i + 1) % 4]
+                steps = max(4, int(s * 0.7))
+                for t in range(steps):
+                    xi = int(round(xc0 + (xc1 - xc0) * t / steps))
+                    yi = int(round(yc0 + (yc1 - yc0) * t / steps))
+                    if _in(xi, yi): pts.add((xi, yi))
+    else:
+        # tiling pattern: full-screen then clip (only for PATCH_OK tiling patterns)
+        full = PATTERNS[pattern](seed)
+        pts = {(x, y) for (x, y) in full if _in(x, y)}
+    return pts
+
 # ---------------------------------------------------------------- render/convert
 
 def to_bitmap(img_set, w=W, h=H):
@@ -652,6 +761,7 @@ def main():
     ap.add_argument('--upload', metavar='IP')
     ap.add_argument('--pattern', default=None, help='pattern name for --upload')
     ap.add_argument('--name', default='zentangle')
+    ap.add_argument('--region', default=None, help='local region "x0,y0,w,h" (patch mode: small area, not full screen)')
     args = ap.parse_args()
 
     if args.list:
@@ -705,10 +815,20 @@ def main():
         if pname not in PATTERNS:
             print(f'ERROR: unknown pattern {pname}. Use --list', file=sys.stderr); sys.exit(1)
         seed = args.seed if args.seed is not None else random.randrange(10**6)
-        img_set = PATTERNS[pname](seed)
+        if args.region:
+            try:
+                rx, ry, rw, rh = (int(v) for v in args.region.split(','))
+            except Exception:
+                print('ERROR: --region must be "x0,y0,w,h"', file=sys.stderr); sys.exit(1)
+            if pname not in PATCH_OK:
+                print(f'WARNING: {pname} not in PATCH_OK (may render empty in a small region)', file=sys.stderr)
+            img_set = gen_patch(pname, seed, rx, ry, rw, rh)
+        else:
+            img_set = PATTERNS[pname](seed)
         data = to_bitmap(img_set)
         resp = upload(args.upload, args.name, data)
-        print(f'pattern={pname} seed={seed} name={args.name} {len(data)}B -> {resp}')
+        mode = f'region=({rx},{ry},{rw}x{rh})' if args.region else 'full'
+        print(f'pattern={pname} seed={seed} name={args.name} {mode} {len(data)}B -> {resp}')
         return
 
     ap.print_help()
