@@ -90,11 +90,11 @@ python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/pixel_art_generator.
 
 **Zentangle (禅绕画) generator** — procedural full-screen 296x128 line art, infinite variety via seed:
 ```bash
-python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py --list     # patterns: waves concentric spiral grid vine honeycomb mandala meander ripple
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py --list     # 24 patterns: waves concentric spiral grid vine honeycomb mandala meander ripple + classic tangle set (knightsbridge paradox printemps crescent flux mooka fescu betweed hollibaugh weave scale rose lissajous aster stipple)
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py --preview  # render 9-sample PNG grid
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py --upload <IP> --pattern mandala --name z1 --seed 42   # upload to LittleFS
 # then: fridge.canvas.clear → fridge.canvas.add_image {id:"z1", name:"z1", x:0, y:0, w:296, h:128} → refresh
-# Best-looking: mandala, vine, waves, meander. Dense patterns (honeycomb/grid) may ghost on e-paper.
+# Best-looking: mandala, vine, waves, meander, paradox, rose, printemps, stipple. Dense patterns (honeycomb/grid/knightsbridge) may ghost on e-paper.
 ```
 
 **Quote fetcher** — daily-quote APIs for fresh copy (free, no key; dedups against history):
