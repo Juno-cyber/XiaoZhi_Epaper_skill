@@ -41,8 +41,9 @@ def http_get(url, timeout=8):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode('utf-8', errors='replace')
 
-SEP = '・'  # U+30FB KATAKANA MIDDLE DOT — firmware font (u8g2 wqy gb2312) renders this.
-             # ⚠️ Do NOT use U+00B7 (·): the device font has no glyph for it (drops silently).
+SEP = '-'  # ASCII hyphen — firmware font (u8g2 wqy gb2312) renders it reliably.
+            # ⚠️ NOT U+00B7 (·): no glyph, dropped silently.
+            # ⚠️ NOT U+30FB (・): renders tiny and cramped against the previous char.
 
 def fmt_source(label, src):
     """Join a source label (e.g. 一言) and the work/author with the SEP dot.

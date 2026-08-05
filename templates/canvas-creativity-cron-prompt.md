@@ -83,7 +83,7 @@ heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee
    运行 `python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py`
    返回格式：`「text」 — source`
    - 主文案 = 输出中的 `text` **原句**。只允许截断或拆行适配屏幕宽度（16px 每行 ≤18 字），**禁止改写、禁止另写、禁止拼接素材池句子**
-   - 出处脚注 = 输出中的 `source` **原串逐字照抄**（含「・」U+30FB 分隔符，例如"一言・红楼梦"；⚠️ 固件字库不支持 U+00B7「·」，禁止使用）。禁止重打、禁止替换或删除「・」、禁止自编出处
+   - 出处脚注 = 输出中的 `source` **原串逐字照抄**（含 ASCII `-` 分隔符，例如"一言-红楼梦"；⚠️ 固件字库不支持 U+00B7「·」与 U+30FB「・」，禁止使用）。禁止重打、禁止替换或删除分隔符、禁止自编出处
    - 若输出带 API 失败提示或无输出，换类别重试：`--cat i` → `--cat k` → `--source jinrishici` → `--source iciba`
    - 连续 3 源失败才允许素材池兜底
 4. 根据反重复规则选图标、版式（图标与版式可按主意图选）

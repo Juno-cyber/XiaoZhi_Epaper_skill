@@ -170,7 +170,7 @@ Add a vertical divider at x=185 and place gold price elements on the right:
  y=26  │ ─────────────                │  zp    │  zentangle 画框 (196,6,92,62)
  y=44  │ [cat] 这是傻瓜的              │ (rose/ │
  y=66  │       血脉使然啊。            │  mandala│
- y=100 │ — 一言・有顶天家族            │  …)    │
+ y=100 │ — 一言-有顶天家族            │  …)    │
  y=128 └─────────────────────────────┴────────┘
 ```
 
@@ -183,7 +183,7 @@ Elements (legacy `fridge.canvas.*` names, firmware v2.0.5 — 全部 refresh=fal
 | cat | image | name=cat x=24 y=44 w=24 h=24 |
 | t1 | text | "这是傻瓜的" x=58 y=46 font_size=16 |
 | t2 | text | "血脉使然啊。" x=58 y=68 font_size=16 |
-| note | text | "— 一言・有顶天家族" x=24 y=100 font_size=12 |
+| note | text | "— 一言-有顶天家族" x=24 y=100 font_size=12 |
 | zp | image | name=zp x=196 y=6 w=92 h=62 |
 
 宽度校验（全部 ≤291）：t2 最长 58+96=154；div 只到 x=180，不碰 zen 区 (x≥196)。
@@ -204,7 +204,7 @@ for cmd in \
   '{"tool":"fridge.canvas.add_image","args":{"id":"cat","name":"cat","x":24,"y":44,"w":24,"h":24,"refresh":false}}' \
   '{"tool":"fridge.canvas.add_text","args":{"id":"t1","text":"这是傻瓜的","x":58,"y":46,"font_size":16,"refresh":false}}' \
   '{"tool":"fridge.canvas.add_text","args":{"id":"t2","text":"血脉使然啊。","x":58,"y":68,"font_size":16,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_text","args":{"id":"note","text":"— 一言・有顶天家族","x":24,"y":100,"font_size":12,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_text","args":{"id":"note","text":"— 一言-有顶天家族","x":24,"y":100,"font_size":12,"refresh":false}}' \
   '{"tool":"fridge.canvas.add_image","args":{"id":"zp","name":"zp","x":196,"y":6,"w":92,"h":62,"refresh":false}}' \
   '{"tool":"fridge.canvas.refresh","args":{"refresh":true}}' \
 ; do curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" -d "$cmd"; echo; done
