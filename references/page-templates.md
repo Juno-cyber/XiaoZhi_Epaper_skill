@@ -158,3 +158,57 @@ Add a vertical divider at x=185 and place gold price elements on the right:
 - `vsep`: line, x1=185, y1=2, x2=185, y2=108, width=1
 - Right zone: x=192, width ~100px (~5 chars at 16px, ~7 at 12px)
 - Gold price pushed by cron (`gold_price_update.sh`, every 60m)
+
+## 8. Canvas 小海报 + 角落禅绕画 (Page 6, 实测 2026-08-05)
+
+画布页 (page 6) 单屏布局示例：标题 → 分隔线 → 图标 + 两行大字正文 → 脚注，
+右上角带 zentangle 角落画框。适配 quote_fetcher 的中长文案（拆两行）与"玩味/洞察"意图。
+
+```
+ y=0   ┌─────────────────────────────┬────────┐
+ y=6   │ 有顶天家族                    │        │
+ y=26  │ ─────────────                │  zp    │  zentangle 画框 (196,6,92,62)
+ y=44  │ [cat] 这是傻瓜的              │ (rose/ │
+ y=66  │       血脉使然啊。            │  mandala│
+ y=100 │ — 一言·有顶天家族            │  …)    │
+ y=128 └─────────────────────────────┴────────┘
+```
+
+Elements (legacy `fridge.canvas.*` names, firmware v2.0.5 — 全部 refresh=false，最后一条 refresh)：
+
+| id | type | params |
+|----|------|--------|
+| title | text | "有顶天家族" x=16 y=10 font_size=12 |
+| div | line | x1=16 y1=26 x2=180 y2=26 width=1 (x/y 传 0) |
+| cat | image | name=cat x=24 y=44 w=24 h=24 |
+| t1 | text | "这是傻瓜的" x=58 y=46 font_size=16 |
+| t2 | text | "血脉使然啊。" x=58 y=68 font_size=16 |
+| note | text | "— 一言·有顶天家族" x=24 y=100 font_size=12 |
+| zp | image | name=zp x=196 y=6 w=92 h=62 |
+
+宽度校验（全部 ≤291）：t2 最长 58+96=154；div 只到 x=180，不碰 zen 区 (x≥196)。
+
+完整推屏序列（实测通过）：
+
+```bash
+IP=192.168.40.98
+# 1. 角落禅绕画先上传（可换 mandala/rose/lissajous, seed 随机）
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py \
+  --upload $IP --pattern rose --name zp --region 196,6,92,62 --seed $RANDOM
+# 2. clear → 批量 add (refresh=false) → 最后 refresh
+curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" \
+  -d '{"tool":"fridge.canvas.clear","args":{}}' >/dev/null
+for cmd in \
+  '{"tool":"fridge.canvas.add_text","args":{"id":"title","text":"有顶天家族","x":16,"y":10,"font_size":12,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_line","args":{"id":"div","x":0,"y":0,"x1":16,"y1":26,"x2":180,"y2":26,"width":1,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_image","args":{"id":"cat","name":"cat","x":24,"y":44,"w":24,"h":24,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_text","args":{"id":"t1","text":"这是傻瓜的","x":58,"y":46,"font_size":16,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_text","args":{"id":"t2","text":"血脉使然啊。","x":58,"y":68,"font_size":16,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_text","args":{"id":"note","text":"— 一言·有顶天家族","x":24,"y":100,"font_size":12,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_image","args":{"id":"zp","name":"zp","x":196,"y":6,"w":92,"h":62,"refresh":false}}' \
+  '{"tool":"fridge.canvas.refresh","args":{"refresh":true}}' \
+; do curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" -d "$cmd"; echo; done
+```
+
+复用要点：换文案时改 t1/t2/note 三处；换意图换图标（左列 icon 25 选 1）与 zen 图案；
+分隔线 x2 保持 <196，正文最长行右端保持 <196，即可与任意角落画框共存。
