@@ -41,6 +41,18 @@ def http_get(url, timeout=8):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode('utf-8', errors='replace')
 
+def fmt_source(label, src):
+    """Join a source label (e.g. 一言) and the work/author with a '·' dot.
+
+    Guarantees the two parts never fuse into a separator-less string like
+    「一言红楼梦」on screen. Strips stray punctuation so we don't get
+    double dots (一言··红楼梦) either.
+    """
+    src = (src or '').strip().strip('·.。:：,，、;； ')
+    if not src:
+        return label
+    return f'{label}·{src}'
+
 def fetch_hitokoto(cat=None):
     url = 'https://v1.hitokoto.cn/?r=' + str(random.random())
     if cat:
@@ -48,7 +60,7 @@ def fetch_hitokoto(cat=None):
     d = json.loads(http_get(url))
     text = d.get('hitokoto', '').strip()
     src = d.get('from') or d.get('from_who') or ''
-    return {'text': text, 'source': f'一言·{src}' if src else '一言', 'category': f'hitokoto:{cat or "any"}'}
+    return {'text': text, 'source': fmt_source('一言', src), 'category': f'hitokoto:{cat or "any"}'}
 
 def fetch_jinrishici():
     d = json.loads(http_get('https://v2.jinrishici.com/one.json'))
@@ -59,7 +71,7 @@ def fetch_jinrishici():
     dynasty = origin.get('dynasty', '')
     tags = data.get('matchTags', [])
     src = f'{dynasty} {author}'.strip()
-    return {'text': text, 'source': f'诗词·{src}' if src else '诗词', 'category': 'jinrishici', 'tags': tags}
+    return {'text': text, 'source': fmt_source('诗词', src), 'category': 'jinrishici', 'tags': tags}
 
 def fetch_iciba():
     d = json.loads(http_get('https://open.iciba.com/dsapi/'))
