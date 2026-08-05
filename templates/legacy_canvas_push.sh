@@ -56,7 +56,9 @@ fi
 ok=0; fail=0
 for cmd in "${LINES[@]}"; do
     r=$(curl -s --max-time 8 -X POST "$API" -H "Content-Type: application/json" -d "$cmd")
-    if echo "$r" | grep -q '"status":"success"'; then
+    # Device returns JSON-RPC: result.content[].text contains an ESCAPED inner JSON
+    # (\"status\":\"success\") — match the top-level unescaped "isError":false instead.
+    if echo "$r" | grep -q '"isError":false'; then
         ok=$((ok+1))
         id=$(echo "$cmd" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
         echo "  ✓ ${id:-refresh}"
