@@ -24,6 +24,27 @@ bash deploy.sh --push   # 部署 + git commit + push
 
 > 注意：`deploy.sh` 的方向是 **仓库 → Hermes**（旧 `sync.sh` 已删除）。只改仓库，不要直接改 Hermes 目录——否则下次部署会被覆盖。
 
+## 多机一致性（Multi-Machine Sync）
+
+要让多台机器上的 skill **和它的 cron 行为**完全一致，遵循"单一来源 + 引用"架构：
+
+1. **skill 文件**：仓库是唯一事实源。每台机器执行：
+   ```bash
+   git clone https://github.com/Juno-cyber/XiaoZhi_Epaper_skill.git
+   cd XiaoZhi_Epaper_skill && bash deploy.sh
+   # 以后更新：git pull && bash deploy.sh
+   ```
+2. **cron 规则**：`templates/canvas-creativity-cron-prompt.md` 是 cron 行为规则的唯一来源（已入库）。
+   cron job 的 prompt **不要**粘贴全文，只写一行引用指令：
+   > 严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md 中『Prompt 正文』的全部指令（含时间窗口判断、时段意图权重、反重复硬规则、文案API逐字照抄硬性步骤、legacy 推送与布局约束）。该模板文件是规则的唯一来源，随 skill 仓库 git 同步；若文件缺失或无法读取，直接报错结束，不要自行发挥或凭记忆执行。
+   
+   创建 cron job 参数：`schedule: "every 30m"`、`deliver: "local"`、`enabled_toolsets: ["terminal","file"]`、`skills: ["xiaozhi-control"]`。
+3. **改规则** = 改模板文件 + `git push` → 各机器 `git pull && bash deploy.sh` → 下次 cron 自动生效。
+   各机器的 cron job 配置零漂移（prompt 永远是那一行引用），不会再出现"某台机器还是旧措辞"。
+
+> ⚠️ 本机历史遗留：旧版 cron job 把规则全文内嵌在 prompt 里（无引用），会导致机器间不一致。
+> 已按上述设计更新为引用模式。若其他机器上有旧式内嵌 prompt，请同样改为引用。
+
 ## 设备要求
 
 - ESP32-S3 开发板，运行 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 固件
