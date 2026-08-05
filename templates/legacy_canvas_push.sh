@@ -26,7 +26,7 @@
 #   {"tool":"fridge.canvas.add_image","args":{"id":"cat","name":"cat","x":24,"y":44,"w":24,"h":24,"refresh":false}}
 #   {"tool":"fridge.canvas.add_text","args":{"id":"t1","text":"这是傻瓜的","x":58,"y":46,"font_size":16,"refresh":false}}
 #   {"tool":"fridge.canvas.add_text","args":{"id":"t2","text":"血脉使然啊。","x":58,"y":68,"font_size":16,"refresh":false}}
-#   {"tool":"fridge.canvas.add_text","args":{"id":"note","text":"一言·有顶天家族","x":24,"y":100,"font_size":12,"refresh":false}}
+#   {"tool":"fridge.canvas.add_text","args":{"id":"note","text":"一言・有顶天家族","x":24,"y":100,"font_size":12,"refresh":false}}
 #   {"tool":"fridge.canvas.add_image","args":{"id":"zp","name":"zp","x":196,"y":6,"w":92,"h":62,"refresh":false}}
 #   EOF
 #   bash legacy_canvas_push.sh 192.168.40.98 /tmp/layout.jsonl

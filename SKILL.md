@@ -99,14 +99,14 @@ python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.
 
 **Quote fetcher** — daily-quote APIs for fresh copy (free, no key; dedups against history; audit log):
 ```bash
-python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py              # 一言·文学 (90%+ 主文案来源)
+python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py              # 一言・文学 (90%+ 主文案来源)
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --cat i     # 诗词
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --cat k     # 哲学
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source jinrishici   # 今日诗词
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source iciba        # 每日一句
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py --source pool         # 本地素材池 (仅 API 全挂兜底)
 # Sources: hitokoto (c=d文学/i诗词/k哲学), jinrishici, iciba, local pool. Output: 「text」 — source
-# ⚠️ source 已保证「一言·出处」中点分隔（fmt_source）；屏上脚注必须原样照抄，禁止去掉 · 连写成「一言红楼梦」
+# ⚠️ source 已保证「一言・出处」中点分隔（fmt_source）；屏上脚注必须原样照抄，禁止去掉 ・ 连写成「一言红楼梦」
 # ⚠️ 画布 cron 主文案 90%+ 必须来自此脚本输出；审计日志 ~/.hermes/xiaozhi_canvas/quote_log.jsonl
 ```
 

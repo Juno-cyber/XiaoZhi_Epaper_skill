@@ -41,17 +41,20 @@ def http_get(url, timeout=8):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode('utf-8', errors='replace')
 
+SEP = '・'  # U+30FB KATAKANA MIDDLE DOT — firmware font (u8g2 wqy gb2312) renders this.
+             # ⚠️ Do NOT use U+00B7 (·): the device font has no glyph for it (drops silently).
+
 def fmt_source(label, src):
-    """Join a source label (e.g. 一言) and the work/author with a '·' dot.
+    """Join a source label (e.g. 一言) and the work/author with the SEP dot.
 
     Guarantees the two parts never fuse into a separator-less string like
     「一言红楼梦」on screen. Strips stray punctuation so we don't get
-    double dots (一言··红楼梦) either.
+    double dots (一言・・红楼梦) either.
     """
-    src = (src or '').strip().strip('·.。:：,，、;； ')
+    src = (src or '').strip().strip('·・.。:：,，、;； ')
     if not src:
         return label
-    return f'{label}·{src}'
+    return f'{label}{SEP}{src}'
 
 def fetch_hitokoto(cat=None):
     url = 'https://v1.hitokoto.cn/?r=' + str(random.random())
@@ -94,7 +97,7 @@ def fetch_pool():
     if not lines:
         return {'text': '今天很安静。', 'source': '本地', 'category': 'pool'}
     text, tag = random.choice(lines)
-    return {'text': text, 'source': f'素材池·{tag}', 'category': 'pool'}
+    return {'text': text, 'source': f'素材池・{tag}', 'category': 'pool'}
 
 def recent_texts(days=14):
     """Set of texts used in history within N days."""
