@@ -174,7 +174,7 @@ Add a vertical divider at x=185 and place gold price elements on the right:
  y=128 └─────────────────────────────┴────────┘
 ```
 
-Elements (legacy `fridge.canvas.*` names, firmware v2.0.5 — 全部 refresh=false，最后一条 refresh)：
+Elements（固件 2.0.7，legacy 名与聚合名均可 — 全部 refresh=false，最后一条 refresh）：
 
 | id | type | params |
 |----|------|--------|

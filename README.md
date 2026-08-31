@@ -105,7 +105,7 @@ EOF
 | 画布绘制 | 文字、线条、矩形、图片，支持 LittleFS 持久化 |
 | 自定义页面 | 创建/删除/重命名，元素持久化到 Flash，重启不丢失 |
 | 动态元素 | 设备端时钟/温度/内存（无需 Agent）+ Agent 推送（天气/股价等）|
-| 像素画 | 13 种内置 24×24 像素画素材，自动生成并上传 |
+| 像素画 | 25 种内置 24×24 像素画素材，自动生成并上传 |
 | Web 控制台 | 浏览器端管理界面，支持手绘、拖拽、预览 |
 | 屏幕设计哲学 | 10 条原则 + 5 个刷新前问题，让屏幕成为 Agent 的"生活画布" |
 
@@ -115,13 +115,14 @@ EOF
 |------|------|
 | [SKILL.md](SKILL.md) | Agent 技能定义 — 触发条件、API 参考、工作流 |
 | [references/api-reference.md](references/api-reference.md) | HTTP API + MCP 工具完整参考 |
-| [references/pitfalls.md](references/pitfalls.md) | 52 条实战踩坑清单 |
+| [references/pitfalls.md](references/pitfalls.md) | 54 条实战踩坑清单 |
 | [references/custom-pages.md](references/custom-pages.md) | 自定义页面架构、动态元素、持久化 |
 | [references/page-templates.md](references/page-templates.md) | 7 种即用型页面布局模板 |
 | [references/firmware-development.md](references/firmware-development.md) | 固件编译、烧录、调试、源码结构 |
 | [references/web-console.md](references/web-console.md) | Web 控制台搭建、CORS 配置、前端 API |
 | [references/canvas-web-interaction.md](references/canvas-web-interaction.md) | 画布交互模式：统一事件、离屏画笔、拖拽 |
 | [references/display-philosophy.md](references/display-philosophy.md) | 屏幕设计哲学：10 原则 + 5 问题 |
+| [references/workflow-map.md](references/workflow-map.md) | 定时任务 × 屏幕 总览图（一张 SVG 概括 cron 如何改屏） |
 | [references/hermes-workflow.md](references/hermes-workflow.md) | Hermes 工作流：Web 设计委托、cron 数据推送 |
 
 ## 屏幕设计哲学

@@ -1,6 +1,6 @@
 # 画布自动刷新 Cron Prompt 模板
 
-> 适用：xiaozhi 墨水屏设备（固件 v2.0.5），每 30 分钟自动刷新 canvas 画布。
+> 适用：xiaozhi 墨水屏设备（固件 2.0.7），每 30 分钟自动刷新 canvas 画布。
 > 用法：复制本 prompt 内容到 cronjob 创建/更新，修改设备 IP 等参数。
 > 关联：`references/canvas-creativity.md`（三层防重复机制）、`references/hermes-workflow.md`（cron 模式说明）。
 >
@@ -27,7 +27,7 @@
 ## 任务：刷新 xiaozhi ESP32 墨水屏画布
 
 设备 IP: 192.168.40.98 (端口 8080)
-固件版本: v2.0.5 — 不支持聚合器工具，使用 legacy 名称（fridge.canvas.add_text 等，非 fridge.canvas.control）
+固件版本: 2.0.7 — 聚合器与 legacy 名都可用（推荐聚合名 fridge.canvas.control 等）
 
 ### 时间窗口判断
 - 获取当前时间：`date '+%H'`

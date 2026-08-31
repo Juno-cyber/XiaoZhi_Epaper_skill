@@ -129,7 +129,7 @@
 
 ### 像素画素材
 
-13 种内置 24×24 像素画可直接使用：
+25 种内置 24×24 像素画可直接使用：
 heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee, bell
 
 ```bash

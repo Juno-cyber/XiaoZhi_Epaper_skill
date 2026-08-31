@@ -1,7 +1,7 @@
 ---
 name: xiaozhi-control
 description: "Discover and control xiaozhi ESP32 voice-AI devices on the LAN. Use when user wants to find, health-check, or call MCP tools (fridge management, e-paper page switch, canvas drawing, custom pages, recipes) on a xiaozhi-esp32 device over HTTP."
-version: 1.9.0
+version: 2.0.0
 author: Juno-cyber
 license: MIT
 platforms: [linux, macos, windows]
@@ -133,10 +133,10 @@ Full signatures: `references/api-reference.md`.
 For `line` type, `x`/`y` required by schema but ignored — pass `x:0, y:0`.
 
 ### Network (1 tool)
-`device.network.info` → `{"wifi_ssid":"...","ip":"...","http_url":"..."}`.
+`device.network.info` → `{"wifi_connected":bool,"ssid","ip","mac","hostname","http_port","http_url","mdns","mdns_url"}`（设备会自报真实 mDNS 名，如 `xiaozhi-d224a0.local`，并非固定 `xiaozhi.local`）。
 
 ### Legacy Names
-Old tool names (e.g. `fridge.canvas.add_text`) auto-map via `/api/call` but **use aggregator names for new code**. `/mcp` JSON-RPC endpoint only supports new names.
+固件 2.0.7 同时注册了**旧细粒度名**（`AddUserOnlyTool`，仅 `/api/call` 有效）与**聚合名**（`AddTool`，`/api/call` 与 `/mcp` 都有效）。旧名仍经 `MapLegacyToolCall` 自动映射到聚合名；**新代码统一用聚合名**（`fridge.canvas.control` / `fridge.page.control` / `fridge.page.element.control` + `action`）。
 
 ## E-Paper Pages
 
@@ -152,13 +152,11 @@ Old tool names (e.g. `fridge.canvas.add_text`) auto-map via `/api/call` but **us
 
 ## Canvas API (Page 6) — `fridge.canvas.control`
 
-> ⚠️ **Firmware v2.0.5 note**: the flashed firmware does NOT register the aggregator
-> `fridge.canvas.control` / `fridge.page.control` — call the **legacy names** directly
-> (`fridge.canvas.add_text`, `fridge.canvas.add_line`, `fridge.canvas.add_rect`,
-> `fridge.canvas.add_image`, `fridge.canvas.remove`, `fridge.canvas.clear`,
-> `fridge.canvas.refresh`, `fridge.canvas.list`). `quick_page_builder.py` uses the
-> aggregator and **fails silently** on this firmware — hand-curl instead (pitfall #53).
-> Aggregator names apply only to newer firmware builds.
+> ⚠️ **固件 2.0.7**（实测）：聚合工具 `fridge.canvas.control` / `fridge.page.control` /
+> `fridge.page.element.control` 已注册并可正常调用（`action=clear/create/list/add` 均返回
+> success），`quick_page_builder.py` 恢复可用；旧细粒度名（`fridge.canvas.add_text` 等）也仍
+> 可用（仅 `/api/call`）。无论用哪种名，都坚持 `clear → 批量 add(refresh=false) → 最后
+> refresh=true`（pitfall #53）。**仅固件 ≤2.0.5 才需要强制 legacy 名**。
 
 ```bash
 curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
@@ -267,7 +265,7 @@ python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/crash_log.py /dev/tt
 **Baud = 115200** (NOT 921600 — garbage otherwise). Verify: `grep MONITOR_BAUD sdkconfig`.
 `pyserial` is only in the IDF venv (`$HOME/.espressif/python_env/idf5.4_py3.10_env/bin/python3`), NOT system python3 — always use the IDF venv for serial scripts.
 
-## Agent Pitfalls (TOP 10 — full 52 in `references/pitfalls.md`)
+## Agent Pitfalls (TOP 10 — full 54 in `references/pitfalls.md`)
 
 1. **Text overflow right boundary** (#1 layout bug) → verify `x + chars×char_width ≤ 291` before placing ANY text (16px/char at font=16, 12px/char at font=12). Split-screen right zone fits only 6 chars at 16px.
 2. **`align=center` x is region left edge, not text center** → centers within `[x, x+max_width]` (default 276). Use `x=0`/`x=10` to truly center; `x=148` pushes text far right.
@@ -281,14 +279,27 @@ python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/crash_log.py /dev/tt
 10. **No auth** → any device on same LAN can call the API. Use only on trusted networks.
 
 Firmware-development pitfalls (partition table, CORS, persistence bugs, crash diagnosis):
-→ `references/firmware-development.md` + `references/pitfalls.md` (52 entries).
+→ `references/firmware-development.md` + `references/pitfalls.md` (54 entries).
+
+## Workflow Map（定时任务 × 屏幕总览图）
+
+用一张自包含 SVG 概括「cron 任务 → 24h 触发 → 屏幕页面/元素 → 最近刷新」：
+
+```bash
+python3 <skill>/scripts/workflow_map.py --ip <IP> \
+    --jobs ~/.hermes/cron/jobs.json \
+    --history ~/.hermes/xiaozhi_canvas/history.jsonl --out workflow_map.svg
+```
+
+产出 `workflow_map.svg`（浏览器直接打开；样例见 `templates/workflow-map.example.svg`）。详见 `references/workflow-map.md`。
 
 ## References
 
 | File | Content | Read when |
 |------|---------|-----------|
 | `references/api-reference.md` | Full HTTP API + MCP tool signatures | Any tool call needs exact params |
-| `references/pitfalls.md` | All 52 field-tested pitfalls | Anything fails or behaves unexpectedly |
+| `references/pitfalls.md` | All 54 field-tested pitfalls | Anything fails or behaves unexpectedly |
+| `references/workflow-map.md` | 定时任务 × 屏幕 总览图（一张 SVG 概括 cron 如何改屏） | 想看定时任务全貌 / 排查任务-屏幕漂移 |
 | `references/custom-pages.md` | Custom page architecture, dynamic elements, layout audits | Building/auditing pages 7-15 |
 | `references/page-templates.md` | 7 ready-made layout templates | Building a common page layout |
 | `references/display-philosophy.md` | 10 design principles + 5 pre-refresh questions | Designing what to show on screen |

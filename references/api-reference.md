@@ -9,7 +9,8 @@ device when LocalControl is enabled (HTTP server on port 8080 + mDNS `xiaozhi-<M
 
 ```bash
 curl http://<IP>:8080/
-# → {"status":"ok","board":"bread-compact-wifi-epaperx","version":"2.0.3",...}
+# → {"status":"ok","board":"bread-compact-wifi-epaperx","name":"好运来的小智","version":"2.0.7","idf_version":"v5.4.2","wifi_connected":true,"mac":"3c:0f:02:d2:24:a0","hostname":"xiaozhi-d224a0","mdns":"xiaozhi-d224a0.local","ip":"192.168.1.10","http_url":"http://192.168.1.10:8080/"}
+#    （固件 2.0.7 起 `/` 返回字段更全：hostname / mdns / mdns_url / wifi_connected / idf_version / name）
 ```
 
 ### Built-in Device Scanner UI
@@ -78,7 +79,7 @@ curl http://<IP>:8080/api/canvas_image
 
 ## Available MCP Tools
 
-MCP tools exposed by the device (14 visible tools — 10 fridge core + 3 UI aggregators + 1 network):
+MCP tools exposed by the device (`/mcp` `tools/list` 可见 14 个 AddTool：10 fridge core + 3 UI aggregators + 1 network)。固件 2.0.7 起 `tools/list` **分页**（返回 `nextCursor`，如 `"fridge.canvas.control"` 表示还有下一页）；旧细粒度名是 `AddUserOnlyTool`，**不出现在** `/mcp` 工具清单里，仅 `/api/call` 可用。`fridge.help` 工具在 2.0.7 **已移除**。
 
 ### Fridge Core (10 tools)
 
@@ -107,11 +108,11 @@ MCP tools exposed by the device (14 visible tools — 10 fridge core + 3 UI aggr
 
 | Tool | Description | Key Args |
 |------|-------------|----------|
-| `device.network.info` | Get Wi-Fi IP, HTTP URL | `{}` |
+| `device.network.info` | Wi-Fi/网络信息（含真实 mdns 名） | `{}` → `wifi_connected/ssid/ip/mac/hostname/http_port/http_url/mdns/mdns_url` |
 
 ### Legacy Compatibility
 
-Old tool names (e.g. `fridge.canvas.add_text`, `fridge.page.create`, `fridge.page.element.add`) still work via `/api/call` — the device auto-maps them to the new aggregator format. The `/mcp` (JSON-RPC) endpoint only supports the new tool names.
+旧细粒度名（`fridge.canvas.add_text`、`fridge.page.create`、`fridge.page.element.add` 等）在固件 2.0.7 以 **`AddUserOnlyTool`** 直接注册，且仍经 `MapLegacyToolCall` 自动映射到聚合名——**仅 `/api/call` 可用**。`/mcp`（JSON-RPC）端点只暴露聚合名（`AddTool`）。新代码用聚合名。
 
 ## E-Paper Pages
 

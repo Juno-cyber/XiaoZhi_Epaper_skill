@@ -25,6 +25,7 @@ cp "$REPO_DIR"/scripts/*.py "$SKILL_DIR/scripts/"
 # Templates (scripts + cron prompt templates — repo is the single source of truth)
 cp "$REPO_DIR"/templates/*.sh "$SKILL_DIR/templates/" 2>/dev/null || true
 cp "$REPO_DIR"/templates/*.md "$SKILL_DIR/templates/" 2>/dev/null || true
+cp "$REPO_DIR"/templates/*.svg "$SKILL_DIR/templates/" 2>/dev/null || true
 
 # References (repo dir name matches Hermes references/ — direct copy)
 cp "$REPO_DIR"/references/*.md "$SKILL_DIR/references/"

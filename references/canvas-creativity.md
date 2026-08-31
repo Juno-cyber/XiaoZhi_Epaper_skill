@@ -113,7 +113,7 @@
 1. **取文案（90% 强制）**：`quote_fetcher.py` 必调，输出即主文案与脚注出处
 2. **查台账去重**：`tail -10 ~/.hermes/xiaozhi_canvas/history.jsonl` → 文案不与近 7 天同；版式不与最近 2 屏同；图标同时段 3 次内不重复
 3. **禅绕画角落（可选）**：`zentangle_generator.py --upload <IP> --pattern <名> --name zp --region <x,y,w,h> --seed $RANDOM`（角落区域见上方案A；与正文保持不重叠：正文/分隔线右端 < region.x）
-4. **推送（固件 v2.0.5）**：clear → legacy `fridge.canvas.*` 批量 add 全部 `refresh=false` → 最后一条 `refresh=true`；逐条确认 `"status":"success"`，串行执行不并发
+4. **推送（固件 ≥2.0.7）**：clear → 批量 add 全部 `refresh=false` → 最后一条 `refresh=true`（聚合名 / legacy 名均可）；逐条确认 `"status":"success"`，串行执行不并发
 5. **台账**：quote_log 由 quote_fetcher 自动留痕；history.jsonl **测试屏可跳过**（不占用 cron 去重额度，避免测试文案污染后续自动屏）；正式屏必写
 
 完整可复用布局（小海报+角落禅绕画）与推屏命令：`references/page-templates.md` §8。
