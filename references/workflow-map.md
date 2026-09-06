@@ -37,11 +37,11 @@ skill 现在的定时能力是「建 cron →（Agent 或 shell 脚本）取数�
 | 方式 | 依赖 | 中文渲染 | 可移植 | 适用 |
 |---|---|---|---|---|
 | **纯 Python 生成 SVG**（默认） | 无（标准库） | 浏览器系统 CJK 字体 | ✅ 跨平台 | 首选「一张图」：可提交、可浏览器打开、可贴进聊天/文档 |
-| **Pillow + wqy 字体生成 PNG** | Pillow + `wqy-zenhei.ttc`（juno 已有，`~/.hermes/xiaozhi_canvas/render_v2.py` 沉淀） | 与固件字库同款、像素级贴合 | juno only | 需要**像素级**复刻每个 296×128 屏时（画布审美预览已用此方案） |
+| **Pillow 生成 PNG** | Pillow + 可用的 CJK 字体 | 可接近固件字号与布局 | 依赖本机字体 | 需要逐页 296×128 位图预览时 |
 | Mermaid（markdown） | 无（渲染器在 GitHub/编辑器） | 中英均可 | ✅ | 静态拓扑图，贴 README；不是「数据驱动的一张图」 |
 | HTML 仪表盘 | 无（浏览器） | ✅ | ✅ | 交互版（hover 高亮、点页看详情），可作第二阶段增强 |
 
-**推荐**：SVG-first（本 skill 零依赖、跨平台）。SVG 在任何浏览器即可看；juno 上若要 PNG 交付，用现有 Pillow 管线把每页做成 296×128 真实预览后拼进同一图，或用 `chromium --headless --screenshot` / `rsvg-convert` 转 PNG。
+**推荐**：SVG-first（本 skill 零依赖、跨平台）。SVG 在任何浏览器即可看；若要 PNG，可用 Pillow、`chromium --headless --screenshot` 或 `rsvg-convert` 转换。
 
 ## 用法
 
@@ -57,7 +57,7 @@ python3 scripts/workflow_map.py \
 
 - `--ip` 缺省则不连设备（只画 cron + 历史，不画页面缩略图）。
 - 提交样例见 `templates/workflow-map.example.svg`（真实数据快照，2026-09-01）。
-- 若要转 PNG：`chromium --headless --screenshot=workflow_map.png workflow_map.svg`（或 juno 上 `rsvg-convert`）。
+- 若要转 PNG：`chromium --headless --screenshot=workflow_map.png workflow_map.svg`（或使用 `rsvg-convert`）。
 
 ## 已知数据坑（本图会暴露，但请勿擅自改运行时状态）
 

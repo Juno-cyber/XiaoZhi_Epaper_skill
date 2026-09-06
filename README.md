@@ -19,8 +19,10 @@
 
 ```bash
 bash deploy.sh          # 部署到 ~/.hermes/skills/smart-home/xiaozhi-control/
-bash deploy.sh --push   # 部署 + git commit + push
+bash deploy.sh --dry-run # 只预览将复制/清理的文件
 ```
+
+部署脚本只负责同步文件，不会替你执行 `git add`、提交或推送。首次部署会自动创建目标目录；也可通过 `XIAOZHI_SKILL_DIR` 指定测试目录。已从仓库删除的脚本、模板和参考文档会从部署副本中清理。
 
 > 注意：`deploy.sh` 的方向是 **仓库 → Hermes**（旧 `sync.sh` 已删除）。只改仓库，不要直接改 Hermes 目录——否则下次部署会被覆盖。
 
@@ -36,14 +38,11 @@ bash deploy.sh --push   # 部署 + git commit + push
    ```
 2. **cron 规则**：`templates/canvas-creativity-cron-prompt.md` 是 cron 行为规则的唯一来源（已入库）。
    cron job 的 prompt **不要**粘贴全文，只写一行引用指令：
-   > 严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md 中『Prompt 正文』的全部指令（含时间窗口判断、时段意图权重、反重复硬规则、文案API逐字照抄硬性步骤、legacy 推送与布局约束）。该模板文件是规则的唯一来源，随 skill 仓库 git 同步；若文件缺失或无法读取，直接报错结束，不要自行发挥或凭记忆执行。
+   > 严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md 中『Prompt 正文』的全部指令。该模板文件是规则的唯一来源，随 skill 仓库 git 同步；若文件缺失或无法读取，直接报错结束。
    
    创建 cron job 参数：`schedule: "every 30m"`、`deliver: "local"`、`enabled_toolsets: ["terminal","file"]`、`skills: ["xiaozhi-control"]`。
 3. **改规则** = 改模板文件 + `git push` → 各机器 `git pull && bash deploy.sh` → 下次 cron 自动生效。
    各机器的 cron job 配置零漂移（prompt 永远是那一行引用），不会再出现"某台机器还是旧措辞"。
-
-> ⚠️ 本机历史遗留：旧版 cron job 把规则全文内嵌在 prompt 里（无引用），会导致机器间不一致。
-> 已按上述设计更新为引用模式。若其他机器上有旧式内嵌 prompt，请同样改为引用。
 
 ## 设备要求
 
@@ -52,6 +51,8 @@ bash deploy.sh --push   # 部署 + git commit + push
 - 带电子墨水屏（默认 296×128 像素）
 - 与控制端在同一局域网
 
+> 安全提示：LocalControl 使用无认证的明文 HTTP，只能用于可信局域网。不要将设备 8080 端口或本地开发代理暴露到公网。
+
 ## 快速开始
 
 ### 1. 发现设备
@@ -59,6 +60,14 @@ bash deploy.sh --push   # 部署 + git commit + push
 ```bash
 python3 scripts/xiaozhi_discovery.py --health --save
 ```
+
+多设备或非 `/24` 网络可显式指定：
+
+```bash
+python3 scripts/xiaozhi_discovery.py --subnet 192.168.40.0/27 --all --health
+```
+
+扫描总量超过 4096 个地址需显式使用 `--allow-large-scan`，并始终受 65536 地址硬上限保护；自动检测到过大的接口网段时只扫描本机所在 `/24`，避免意外耗尽内存与连接资源。
 
 ### 2. 健康检查
 
@@ -87,7 +96,7 @@ curl -X POST http://<IP>:8080/api/call \
 python3 scripts/quick_page_builder.py <IP> 6 - << 'EOF'
 clear
 text id=title text="今日待办" x=8 y=2 font_size=12 align=left
-line id=sep x1=0 y1=18 x2=296 y2=18 width=1
+line id=sep x1=0 y1=18 x2=295 y2=18 width=1
 text id=item1 text="写论文" x=20 y=24 font_size=12
 text id=item2 text="训模型" x=20 y=42 font_size=12
 text id=item3 text="做饭" x=20 y=60 font_size=12
@@ -95,6 +104,7 @@ refresh
 EOF
 ```
 元素默认 `refresh=false` 批量添加，最后一行 `refresh` 统一刷新。
+执行前可加 `--check` 只验证布局；解析错误、越界、重复 ID、超过 30 个元素和设备错误都会返回非零退出码。
 
 ## 功能概览
 
@@ -104,7 +114,7 @@ EOF
 | 页面切换 | 6 个内置页面 + 最多 9 个自定义页面 (7-15) |
 | 画布绘制 | 文字、线条、矩形、图片，支持 LittleFS 持久化 |
 | 自定义页面 | 创建/删除/重命名，元素持久化到 Flash，重启不丢失 |
-| 动态元素 | 设备端时钟/温度/内存（无需 Agent）+ Agent 推送（天气/股价等）|
+| 动态元素 | 设备端时钟/日期（无需 Agent）+ Agent 推送（天气/系统指标/股价等）|
 | 像素画 | 25 种内置 24×24 像素画素材，自动生成并上传 |
 | Web 控制台 | 浏览器端管理界面，支持手绘、拖拽、预览 |
 | 屏幕设计哲学 | 10 条原则 + 5 个刷新前问题，让屏幕成为 Agent 的"生活画布" |
@@ -115,7 +125,7 @@ EOF
 |------|------|
 | [SKILL.md](SKILL.md) | Agent 技能定义 — 触发条件、API 参考、工作流 |
 | [references/api-reference.md](references/api-reference.md) | HTTP API + MCP 工具完整参考 |
-| [references/pitfalls.md](references/pitfalls.md) | 54 条实战踩坑清单 |
+| [references/pitfalls.md](references/pitfalls.md) | 当前故障与安全边界清单 |
 | [references/custom-pages.md](references/custom-pages.md) | 自定义页面架构、动态元素、持久化 |
 | [references/page-templates.md](references/page-templates.md) | 7 种即用型页面布局模板 |
 | [references/firmware-development.md](references/firmware-development.md) | 固件编译、烧录、调试、源码结构 |
@@ -140,6 +150,20 @@ EOF
 - **存储**: LittleFS (2MB 分区, 存储图片和页面布局)
 - **屏幕**: 296×128 电子墨水屏 (GxEPD2)
 - **控制端**: Python 3, curl, 任何支持 HTTP 的 Agent
+
+## 依赖与测试
+
+设备发现、HTTP 控制、布局构建和文案抓取只依赖 Python 标准库。禅绕画、PNG 预览和串口抓取的可选依赖：
+
+```bash
+python3 -m pip install -r requirements-optional.txt
+```
+
+主要支持 Linux 和 macOS；Windows 建议通过 WSL 使用。运行离线测试：
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 ## License
 

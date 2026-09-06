@@ -1,73 +1,46 @@
-#!/bin/bash
-# Todo List Page Template for xiaozhi e-paper display (296×128)
-# Creates a "待办事项" layout on a custom page (7-15) with:
-#   - Title bar + separator
-#   - 3 checkbox (rect) + text pairs (dynamic, updateable via element.update)
-#   - Bottom hint text
-#
-# Usage: ./todo-list-page.sh [IP] [PAGE] [ITEM1] [ITEM2] [ITEM3]
-#   IP: device IP (default 192.168.1.10)
-#   PAGE: target page number (default 7)
-#   ITEM1/2/3: custom item text (defaults: 写专利/改论文/运动小智开发)
-#
-# Design (12px compact layout):
-#   - font_size=12, row spacing 18px, checkbox 6×6
-#   - separator at y=18, items at y=24/42/60, hint at y=112
-#
-# Adapt this template for other list-style pages:
-#   shopping list, task list, schedule, etc.
+#!/usr/bin/env bash
+# Build a validated todo layout on an existing custom page (7-15).
+set -euo pipefail
 
-IP="${1:-192.168.1.10}"
-PAGE="${2:-7}"
+IP="${1:?usage: todo-list-page.sh <device-host> <page> [item1] [item2] [item3]}"
+PAGE="${2:?usage: todo-list-page.sh <device-host> <page> [item1] [item2] [item3]}"
+PORT="${XIAOZHI_PORT:-8080}"
 ITEM1="${3:-写专利}"
 ITEM2="${4:-改论文}"
 ITEM3="${5:-运动小智开发}"
-BASE="http://$IP:8080/api/call"
-HDR="Content-Type: application/json"
 
-call() {
-  curl -s -X POST "$BASE" -H "$HDR" -d "$1"
-  echo
-}
-
-echo "=== Setting up todo list page $PAGE on $IP ==="
-echo "=== Items: $ITEM1 / $ITEM2 / $ITEM3 ==="
-
-# 1. Rename page (assumes page already exists; create first if needed)
-call "{\"tool\":\"fridge.page.control\",\"args\":{\"action\":\"rename\",\"page\":$PAGE,\"name\":\"待办事项\"}}"
-
-# 2. Clear any existing elements
-call "{\"tool\":\"fridge.page.control\",\"args\":{\"action\":\"clear\",\"page\":$PAGE,\"refresh\":false}}"
-
-# 3. Title + separator (batch mode: refresh=false)
-call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"title\",\"type\":\"text\",\"text\":\"待办事项\",\"x\":8,\"y\":2,\"font_size\":12,\"align\":\"left\",\"refresh\":false}}"
-call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"sep\",\"type\":\"line\",\"x\":0,\"y\":0,\"x1\":0,\"y1\":18,\"x2\":296,\"y2\":18,\"width\":1,\"refresh\":false}}"
-
-# 4. Three todo items (checkbox + text pairs)
-#    Compact 12px layout: row spacing 18px, checkbox 6×6
-#    Row 1: y=24 (text+box aligned), Row 2: y=42, Row 3: y=60
-for i in 1 2 3; do
-  case $i in
-    1) TEXT="$ITEM1"; Y=24 ;;
-    2) TEXT="$ITEM2"; Y=42 ;;
-    3) TEXT="$ITEM3"; Y=60 ;;
+case "$PAGE" in
+  7|8|9|10|11|12|13|14|15) ;;
+  *) echo "ERROR: page must be 7-15" >&2; exit 2 ;;
+esac
+for value in "$ITEM1" "$ITEM2" "$ITEM3"; do
+  case "$value" in
+    *$'\n'*|*$'\r'*) echo "ERROR: todo text must be a single line" >&2; exit 2 ;;
   esac
-  call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"box$i\",\"type\":\"rect\",\"x\":6,\"y\":$Y,\"w\":6,\"h\":6,\"filled\":false,\"refresh\":false}}"
-  call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"item$i\",\"type\":\"text\",\"text\":\"$TEXT\",\"x\":20,\"y\":$Y,\"font_size\":12,\"align\":\"left\",\"dynamic\":true,\"refresh\":false}}"
 done
 
-# 5. Bottom hint — last element carries refresh=true to flush everything at once
-#    (Never use fridge.canvas.refresh here: it switches the display to canvas page 6!)
-call "{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"hint\",\"type\":\"text\",\"text\":\"说\\\"提醒我...\\\"添加待办\",\"x\":8,\"y\":112,\"font_size\":12,\"align\":\"left\",\"refresh\":true}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILDER="$SCRIPT_DIR/../scripts/quick_page_builder.py"
+[ -f "$BUILDER" ] || { echo "ERROR: builder not found: $BUILDER" >&2; exit 1; }
 
-# 6. Switch to the page to display
-call "{\"tool\":\"fridge.pagemanager\",\"args\":{\"target_page\":$PAGE}}"
+shell_quote() {
+  python3 -c 'import shlex, sys; print(shlex.quote(sys.argv[1]))' "$1"
+}
 
-echo "=== Done. Page $PAGE is now showing the todo list. ==="
-echo ""
-echo "To update an item text:"
-echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"update\",\"page\":$PAGE,\"id\":\"item1\",\"text\":\"新内容\",\"refresh\":true}}'"
-echo ""
-echo "To mark item as done (fill the checkbox):"
-echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"remove\",\"page\":$PAGE,\"id\":\"box1\",\"refresh\":false}}'"
-echo "  curl -X POST $BASE -H '$HDR' -d '{\"tool\":\"fridge.page.element.control\",\"args\":{\"action\":\"add\",\"page\":$PAGE,\"id\":\"box1\",\"type\":\"rect\",\"x\":6,\"y\":24,\"w\":6,\"h\":6,\"filled\":true,\"refresh\":true}}'"
+ITEM1_Q="$(shell_quote "$ITEM1")"
+ITEM2_Q="$(shell_quote "$ITEM2")"
+ITEM3_Q="$(shell_quote "$ITEM3")"
+
+python3 "$BUILDER" "$IP" "$PAGE" --port "$PORT" - <<EOF
+clear
+text id=title text="待办事项" x=8 y=2 font_size=12 align=left
+line id=sep x1=0 y1=18 x2=295 y2=18 width=1
+rect id=box1 x=6 y=24 w=6 h=6 filled=false
+text id=item1 text=$ITEM1_Q x=20 y=24 font_size=12 align=left dynamic=true
+rect id=box2 x=6 y=42 w=6 h=6 filled=false
+text id=item2 text=$ITEM2_Q x=20 y=42 font_size=12 align=left dynamic=true
+rect id=box3 x=6 y=60 w=6 h=6 filled=false
+text id=item3 text=$ITEM3_Q x=20 y=60 font_size=12 align=left dynamic=true
+text id=hint text='说"提醒我..."添加待办' x=8 y=112 font_size=12 align=left
+refresh
+EOF

@@ -64,7 +64,7 @@ Clients must `JSON.parse()` the inner `text` field to get the actual data.
 ### Canvas Image Upload
 
 ```bash
-# Upload a 1-bpp raw bitmap (w*h/8 bytes)
+# Upload a row-padded 1-bpp raw bitmap
 curl -X POST "http://<IP>:8080/api/canvas_image?name=my_image" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @image.bin
@@ -79,7 +79,7 @@ curl http://<IP>:8080/api/canvas_image
 
 ## Available MCP Tools
 
-MCP tools exposed by the device (`/mcp` `tools/list` 可见 14 个 AddTool：10 fridge core + 3 UI aggregators + 1 network)。固件 2.0.7 起 `tools/list` **分页**（返回 `nextCursor`，如 `"fridge.canvas.control"` 表示还有下一页）；旧细粒度名是 `AddUserOnlyTool`，**不出现在** `/mcp` 工具清单里，仅 `/api/call` 可用。`fridge.help` 工具在 2.0.7 **已移除**。
+MCP tools exposed by the device (`/mcp` `tools/list` 可见 14 个 AddTool：10 fridge core + 3 UI aggregators + 1 network)。固件 2.0.7 起 `tools/list` **分页**（返回 `nextCursor`，如 `"fridge.canvas.control"` 表示还有下一页）；旧细粒度名由 LocalControl 兼容映射，**不出现在** `/mcp` 工具清单里，仅 `/api/call` 可用。`fridge.help` 工具在 2.0.7 **已移除**。
 
 ### Fridge Core (10 tools)
 
@@ -112,7 +112,7 @@ MCP tools exposed by the device (`/mcp` `tools/list` 可见 14 个 AddTool：10 
 
 ### Legacy Compatibility
 
-旧细粒度名（`fridge.canvas.add_text`、`fridge.page.create`、`fridge.page.element.add` 等）在固件 2.0.7 以 **`AddUserOnlyTool`** 直接注册，且仍经 `MapLegacyToolCall` 自动映射到聚合名——**仅 `/api/call` 可用**。`/mcp`（JSON-RPC）端点只暴露聚合名（`AddTool`）。新代码用聚合名。
+旧细粒度名（`fridge.canvas.add_text`、`fridge.page.create`、`fridge.page.element.add` 等）在固件 2.0.7 由 LocalControl 的 `MapLegacyToolCall` 映射到聚合名，**仅 `/api/call` 可用**；它们不再逐个注册为可见 MCP 工具。`/mcp`（JSON-RPC）端点只暴露聚合名（`AddTool`）。新代码统一使用聚合名。
 
 ## E-Paper Pages
 
@@ -176,7 +176,7 @@ Images are persisted in a 2MB LittleFS partition (`canvas_data`) on the device
 flash. Upload via HTTP, then reference by name in `canvas.add_image`.
 
 ```bash
-# Upload a 1-bpp raw bitmap (w*h/8 bytes)
+# Upload a row-padded 1-bpp raw bitmap
 curl -X POST "http://<IP>:8080/api/canvas_image?name=my_image" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @image.bin
@@ -187,7 +187,7 @@ curl http://<IP>:8080/api/canvas_image
 
 # Display the image on canvas
 curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.add_image","args":{"id":"img1","name":"my_image","x":100,"y":30,"w":64,"h":64}}'
+  -d '{"tool":"fridge.canvas.control","args":{"action":"add_image","id":"img1","name":"my_image","x":100,"y":30,"w":64,"h":64}}'
 ```
 
 ### Image Format
@@ -200,10 +200,9 @@ curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
 - For a 64×64 image: 512 bytes
 - For full screen (296×128): `ceil(296/8) * 128 = 37 * 128 = 4736` bytes
 
-**Key detail**: the device reads `w * h / 8` bytes from the file and pads with
-zeros if short. Width should ideally be a multiple of 8 (296 is NOT — 296/8=37
-bytes per row, no remainder since 296 = 37*8, so it works perfectly). For
-non-multiple-of-8 widths, pad the last byte's unused bits to white (1).
+**Key detail**: current firmware reads `ceil(w/8) * h` bytes. Each row starts
+on a byte boundary. For non-multiple-of-8 widths, pad the last byte's unused
+bits to white (0).
 
 ### Bitmap Color Inversion Pitfall
 
@@ -216,19 +215,12 @@ the screen will show them as **black** — the entire image is inverted.
 dark pixels (lum<128) get bit=1 (foreground=black), light pixels get bit=0
 (background=white).
 
-### w*h/8 vs ceil(w/8)*h Pitfall
+### Row padding and older firmware
 
-The device firmware (`HandleCanvasAddImage` in `fridge_mcp.cc`) calculates
-`total_bytes = w * h / 8` using integer division. This is WRONG for widths
-that are not multiples of 8 — e.g. a 100×50 image: device expects `100*50/8
-= 625` bytes, but the correct 1-bpp packing is `ceil(100/8)*50 = 13*50 = 650`
-bytes. The device will read 625 bytes, leaving 25 bytes of the last
-column-pair unread, causing a garbled right edge.
-
-**Workaround**: always use widths that are multiples of 8 for canvas images.
-The full-screen freehand drawing (296×128) works because 296 = 37×8 (exact).
-For the web console's image insertion feature, round the target width up to
-the next multiple of 8 before generating the bitmap.
+Current firmware uses `CanvasBitmapBytes(w, h) = ceil(w/8) * h`, so widths that
+are not multiples of eight are supported. Do not pack rows as one continuous
+bit stream. Older firmware may have used `w*h/8`; prefer multiples of eight
+only when compatibility with such firmware is required.
 
 ### Browser → Canvas Bitmap Workflow
 
@@ -236,7 +228,7 @@ For freehand drawing / image insertion from web:
 1. Draw on an HTML `<canvas>` element (296×128)
 2. Get pixel data: `ctx.getImageData(0, 0, 296, 128).data` (RGBA array)
 3. Binarize: for each pixel, luminance = `0.299*R + 0.587*G + 0.114*B`;
-   threshold at 128 → black (bit=0) / white (bit=1) — **inverted** per pitfall above
+   threshold at 128 → black (bit=1) / white (bit=0)
 4. Pack into 1-bpp bitmap: 8 pixels per byte, MSB first, row-padded to byte
    boundary → `Uint8Array(ceil(296/8) * 128) = 37 * 128 = 4736 bytes`
 5. Upload: `fetch('/xiaozhi-api/api/canvas_image?name=freehand_N', { method: 'POST', body: bitmapBuffer })`

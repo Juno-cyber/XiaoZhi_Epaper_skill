@@ -21,6 +21,8 @@ import argparse, json, os, random, re, sys, urllib.request, datetime
 POOL = os.path.expanduser('~/.hermes/xiaozhi_canvas/content_pool.md')
 HIST = os.path.expanduser('~/.hermes/xiaozhi_canvas/history.jsonl')
 QLOG = os.path.expanduser('~/.hermes/xiaozhi_canvas/quote_log.jsonl')
+MAX_HTTP_BYTES = 1024 * 1024
+MAX_HISTORY_BYTES = 4 * 1024 * 1024
 
 def log_quote(q):
     """Append a fetch record to the quote log (audit trail: proves real API calls)."""
@@ -31,15 +33,21 @@ def log_quote(q):
             'category': q.get('category', ''),
             'text': q.get('text', '')[:40],
         }
+        os.makedirs(os.path.dirname(os.path.abspath(QLOG)), exist_ok=True)
         with open(QLOG, 'a', encoding='utf-8') as f:
             f.write(json.dumps(rec, ensure_ascii=False) + '\n')
-    except Exception:
-        pass
+        return True
+    except OSError as exc:
+        print(f'WARNING: quote audit log failed: {exc}', file=sys.stderr)
+        return False
 
 def http_get(url, timeout=8):
     req = urllib.request.Request(url, headers={'User-Agent': 'hermes-canvas/1.0'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode('utf-8', errors='replace')
+        data = r.read(MAX_HTTP_BYTES + 1)
+        if len(data) > MAX_HTTP_BYTES:
+            raise ValueError('quote response exceeds 1 MiB')
+        return data.decode('utf-8', errors='replace')
 
 SEP = '-'  # ASCII hyphen — firmware font (u8g2 wqy gb2312) renders it reliably.
             # ⚠️ NOT U+00B7 (·): no glyph, dropped silently.
@@ -91,28 +99,55 @@ def fetch_pool():
     if not os.path.exists(POOL):
         return {'text': '今天很安静。', 'source': '本地', 'category': 'pool'}
     lines = []
-    for ln in open(POOL, encoding='utf-8'):
-        m = re.match(r'^- \[([^\]]+)\]\s*(.+)$', ln.strip())
-        if m:
-            lines.append((m.group(2).strip(), m.group(1)))
+    with open(POOL, encoding='utf-8') as pool_file:
+        for ln in pool_file:
+            m = re.match(r'^- \[([^\]]+)\]\s*(.+)$', ln.strip())
+            if m:
+                lines.append((m.group(2).strip(), m.group(1)))
     if not lines:
         return {'text': '今天很安静。', 'source': '本地', 'category': 'pool'}
     text, tag = random.choice(lines)
-    return {'text': text, 'source': f'素材池・{tag}', 'category': 'pool'}
+    return {'text': text, 'source': fmt_source('素材池', tag), 'category': 'pool'}
 
-def recent_texts(days=14):
+def parse_history_time(value):
+    """Parse the ISO-like timestamps written by current and older cron jobs."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = value.strip().replace('Z', '+00:00')
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone().replace(tzinfo=None)
+    return parsed
+
+
+def recent_texts(days=14, now=None):
     """Set of texts used in history within N days."""
+    if days < 0:
+        raise ValueError('days must be non-negative')
     if not os.path.exists(HIST):
         return set()
+    now = now or datetime.datetime.now()
+    cutoff = now - datetime.timedelta(days=days)
     out = set()
-    for ln in open(HIST, encoding='utf-8'):
-        try:
-            e = json.loads(ln)
-            ts = e.get('ts', '')
-            if ts >= '2026-07-21':   # heuristic: last ~2 weeks
-                out.add(e.get('text', ''))
-        except Exception:
-            continue
+    with open(HIST, 'rb') as history_file:
+        history_file.seek(0, os.SEEK_END)
+        size = history_file.tell()
+        start = max(0, size - MAX_HISTORY_BYTES)
+        history_file.seek(start)
+        if start:
+            history_file.readline()  # discard a partial first record
+        for raw_line in history_file:
+            try:
+                entry = json.loads(raw_line.decode('utf-8'))
+                timestamp = parse_history_time(entry.get('ts'))
+                text = entry.get('text')
+                if timestamp is not None and timestamp >= cutoff and isinstance(text, str) and text:
+                    out.add(text)
+            except (UnicodeDecodeError, json.JSONDecodeError, AttributeError, TypeError):
+                continue
     return out
 
 def is_repeat(text, recent):
@@ -127,14 +162,22 @@ def is_repeat(text, recent):
     return False
 
 def main():
+    global HIST, POOL, QLOG
     ap = argparse.ArgumentParser()
     ap.add_argument('--cat', default=None)
     ap.add_argument('--source', default=None, choices=['hitokoto', 'jinrishici', 'iciba', 'pool'])
     ap.add_argument('--all', action='store_true')
     ap.add_argument('--raw', action='store_true')
+    ap.add_argument('--days', type=int, default=14, help='deduplication window in days')
+    ap.add_argument('--history', default=HIST, help='history JSONL path')
+    ap.add_argument('--pool', default=POOL, help='local fallback pool path')
+    ap.add_argument('--log', default=QLOG, help='audit log JSONL path')
     args = ap.parse_args()
 
-    recent = recent_texts()
+    if args.days < 0 or args.days > 3650:
+        ap.error('--days must be between 0 and 3650')
+    HIST, POOL, QLOG = args.history, args.pool, args.log
+    recent = recent_texts(args.days)
     seen = set(recent)   # history + already-tried this run
     fetchers = []
     if args.source:

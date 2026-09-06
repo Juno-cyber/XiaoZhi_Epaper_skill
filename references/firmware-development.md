@@ -284,21 +284,11 @@ The chat page supports a left/right split layout using a vertical divider line. 
 
 The xiaozhi MQTT server enforces a **hard limit of 32 MCP tools** per device. When exceeded, the server returns an error message `"The number of tools has reached the limit: 32"` which triggers `protocol_->OnNetworkError()` → `Alert(Error, ...)` on the e-paper display (shows "Error" text with 😞 emoji). The error also plays a warning sound via `audio_service_.PlaySound()`, which blocks the main event loop, causing secondary `AFE: Ringbuffer of AFE(FEED) is full` warnings on first wake word invocation (audio feed task can't consume data while the main loop is blocked).
 
-**Current tool count breakdown (after fix)**:
-- 3 common tools (`self.get_device_status`, `self.audio_speaker.set_volume`, `self.screen.set_brightness`)
-- 2 user-only tools (`self.get_system_info`, `self.reboot`)
-- 3 lamp tools (`self.lamp.*`)
-- 24 fridge tools (10 fridge + 5 canvas + 9 custom page)
-- **Total: 32 = exactly the limit**
+**Current design**: firmware 2.0.7 exposes 14 fridge-related visible tools (10 core + 3 aggregate UI tools + 1 network tool). Legacy fine-grained HTTP names are mapped by LocalControl instead of being separately registered, so they do not consume visible MCP tool slots.
 
 **Diagnosis**: capture serial log with `crash_log.py`, look for `Alert [sad] Error: The number of tools has reached the limit: 32` after `MQTT: Connected to endpoint`. The error appears ~3-4 seconds after MQTT connection is established, when the server processes the `tools/list` response and rejects the registration.
 
-**Fix**: reduce tool count to ≤32 by removing redundant canvas tools. Candidates for removal:
-- `fridge.canvas.list` → `page.element.list` can serve the same purpose for web preview sync
-- `fridge.canvas.refresh` → pass `refresh=true` on the last operation instead
-- `fridge.canvas.remove` → merged into `canvas.clear` with optional `id` parameter: when `id` is passed and non-empty, only that element is removed; when omitted, all elements are cleared
-
-**Implementation detail for merging `canvas.remove` into `canvas.clear`**: The `canvas.clear` tool's PropertyList now includes an optional `id` property (default empty string). The lambda checks if `id` is non-empty via try/catch on `properties["id"]` (PropertyList has no `find()` method, and `operator[]` throws `std::runtime_error` if not found). If `id` is set, delegate to `HandleCanvasRemove(properties)`; otherwise call `HandleCanvasClear(properties)`. This pattern can be reused for merging other tools.
+**Rule**: keep the total registered visible tool count below the server limit. Prefer aggregate dispatch tools, inspect every registration result, and follow all pages of `tools/list` before concluding that a tool is missing.
 
 **Secondary AFE ringbuffer warning**: The `AFE: Ringbuffer of AFE(FEED) is full, Please use fetch() to read data to avoid data loss or overwriting` warning appears when the main event loop is blocked (e.g. by `audio_service_.PlaySound()` during the Error alert). This is a **symptom**, not a root cause — it resolves once the tool count error is fixed and the alert no longer triggers. The AFE feed task runs in `AudioService::AudioInputTask()` and reads data in a loop; if the main loop is blocked, the event group bits don't get processed, and the AFE ringbuffer overflows. See `audio_service.cc:190` for the input task loop.
 

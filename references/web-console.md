@@ -88,11 +88,12 @@ location /xiaozhi-api/ {
 
 For local development without Nginx, use a Python proxy server that serves static files and forwards `/xiaozhi-api/` requests to the device. Key points:
 
-- Subclass `http.server.SimpleHTTPRequestHandler`
-- Override `do_GET`, `do_POST`, `do_OPTIONS`
-- In `do_OPTIONS`: return 204 with CORS headers (for preflight)
-- For proxied paths: read request body, forward with `urllib.request`, relay response + CORS headers
-- Static files: fall through to `super().do_GET()`
+- Bind to `127.0.0.1` by default; an unauthenticated LAN-facing proxy would let other hosts control the device.
+- Use `ThreadingHTTPServer` so one slow device request cannot block static files and unrelated calls.
+- Allow only the health path, `/api/call`, and `/api/canvas_image`; reject absolute URLs and path traversal.
+- Bound request and upstream response sizes, set timeouts, and return JSON-encoded errors with correct `Content-Length`.
+- In `do_OPTIONS`, authorize only expected local origins. CORS is not authentication.
+- The maintained implementation and mock-device tests live in `~/Gitproject/Litsea_Top/deploy/proxy_server.py` and `~/Gitproject/Litsea_Top/tests/`.
 
 ## Frontend JavaScript API Client
 

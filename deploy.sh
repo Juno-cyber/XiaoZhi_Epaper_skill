@@ -1,49 +1,80 @@
 #!/usr/bin/env bash
-# deploy.sh — Deploy the repo skill to the Hermes skill directory.
-# The REPO is the single source of truth; Hermes runs a deployed copy.
-# Run this after every repo change, then (optionally) git push.
-# Usage: bash deploy.sh            (deploy only)
-#        bash deploy.sh --push     (deploy + git add/commit/push)
+# Deploy the repository copy into Hermes. Git commits/pushes are intentionally separate.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$HOME/.hermes/skills/smart-home/xiaozhi-control"
+SKILL_DIR="${XIAOZHI_SKILL_DIR:-${HOME}/.hermes/skills/smart-home/xiaozhi-control}"
+DRY_RUN=false
 
-if [ ! -d "$SKILL_DIR" ]; then
-    echo "ERROR: Hermes skill dir not found: $SKILL_DIR"
-    exit 1
+case "${1:-}" in
+  "") ;;
+  --dry-run) DRY_RUN=true ;;
+  *) echo "Usage: bash deploy.sh [--dry-run]" >&2; exit 2 ;;
+esac
+
+case "$SKILL_DIR" in
+  ""|"/"|"$HOME"|"$REPO_DIR")
+    echo "ERROR: unsafe deployment target: $SKILL_DIR" >&2
+    exit 2
+    ;;
+esac
+if [ -d "$SKILL_DIR" ] && [ -n "$(find "$SKILL_DIR" -type l -print -quit)" ]; then
+  echo "ERROR: deployment target contains symlinks; refusing to follow them" >&2
+  exit 2
 fi
 
-mkdir -p "$SKILL_DIR/scripts" "$SKILL_DIR/templates" "$SKILL_DIR/references"
+copy_file() {
+  local source="$1" target="$2"
+  if "$DRY_RUN"; then
+    echo "COPY $source -> $target"
+  else
+    cp -p -- "$source" "$target"
+  fi
+}
 
-# SKILL.md (includes Hermes frontmatter — safe to overwrite)
-cp "$REPO_DIR/SKILL.md" "$SKILL_DIR/SKILL.md"
+sync_group() {
+  local source_dir="$1" target_dir="$2" pattern="$3"
+  if ! "$DRY_RUN"; then
+    mkdir -p -- "$target_dir"
+  fi
 
-# Scripts
-cp "$REPO_DIR"/scripts/*.py "$SKILL_DIR/scripts/"
+  local source existing basename
+  shopt -s nullglob
+  local sources=("$source_dir"/$pattern)
+  shopt -u nullglob
+  for source in "${sources[@]}"; do
+    copy_file "$source" "$target_dir/"
+  done
 
-# Templates (scripts + cron prompt templates — repo is the single source of truth)
-cp "$REPO_DIR"/templates/*.sh "$SKILL_DIR/templates/" 2>/dev/null || true
-cp "$REPO_DIR"/templates/*.md "$SKILL_DIR/templates/" 2>/dev/null || true
-cp "$REPO_DIR"/templates/*.svg "$SKILL_DIR/templates/" 2>/dev/null || true
-
-# References (repo dir name matches Hermes references/ — direct copy)
-cp "$REPO_DIR"/references/*.md "$SKILL_DIR/references/"
-
-echo "✅ Deployed to $SKILL_DIR"
-echo "   SKILL.md        $(wc -l < "$SKILL_DIR/SKILL.md") lines"
-echo "   scripts/        $(ls "$SKILL_DIR/scripts" | wc -l) files"
-echo "   templates/      $(ls "$SKILL_DIR/templates" | wc -l) files"
-echo "   references/     $(ls "$SKILL_DIR/references" | wc -l) files"
-
-if [ "${1:-}" = "--push" ]; then
-    cd "$REPO_DIR"
-    git add -A
-    if git diff --cached --quiet; then
-        echo "No changes to commit."
-    else
-        git commit -m "Deploy skill update: $(date '+%Y-%m-%d %H:%M')"
-        git push
-        echo "✅ Pushed to GitHub."
+  [ -d "$target_dir" ] || return 0
+  shopt -s nullglob
+  local existing_files=("$target_dir"/$pattern)
+  shopt -u nullglob
+  for existing in "${existing_files[@]}"; do
+    basename="${existing##*/}"
+    if [ ! -f "$source_dir/$basename" ]; then
+      if "$DRY_RUN"; then
+        echo "REMOVE stale $existing"
+      else
+        rm -f -- "$existing"
+      fi
     fi
+  done
+}
+
+if ! "$DRY_RUN"; then
+  mkdir -p -- "$SKILL_DIR"
+fi
+copy_file "$REPO_DIR/SKILL.md" "$SKILL_DIR/SKILL.md"
+copy_file "$REPO_DIR/requirements-optional.txt" "$SKILL_DIR/requirements-optional.txt"
+sync_group "$REPO_DIR/scripts" "$SKILL_DIR/scripts" "*.py"
+sync_group "$REPO_DIR/templates" "$SKILL_DIR/templates" "*.sh"
+sync_group "$REPO_DIR/templates" "$SKILL_DIR/templates" "*.md"
+sync_group "$REPO_DIR/templates" "$SKILL_DIR/templates" "*.svg"
+sync_group "$REPO_DIR/references" "$SKILL_DIR/references" "*.md"
+
+if "$DRY_RUN"; then
+  echo "Dry run complete: $SKILL_DIR"
+else
+  echo "Deployed to $SKILL_DIR"
 fi

@@ -5,7 +5,7 @@
 # (fridge.canvas.control / fridge.page.control), so quick_page_builder.py fails
 # silently. This script drives the legacy single-point names exactly as the
 # skill specifies: clear -> batch add (refresh=false on every element) ->
-# final fridge.canvas.refresh. Serial, no concurrent requests (pitfall #9).
+# final fridge.canvas.refresh. Requests are serial, never concurrent.
 #
 # Usage:
 #   bash legacy_canvas_push.sh <IP> <layout-file>
@@ -29,12 +29,17 @@
 #   {"tool":"fridge.canvas.add_text","args":{"id":"note","text":"一言-有顶天家族","x":24,"y":100,"font_size":12,"refresh":false}}
 #   {"tool":"fridge.canvas.add_image","args":{"id":"zp","name":"zp","x":196,"y":6,"w":92,"h":62,"refresh":false}}
 #   EOF
-#   bash legacy_canvas_push.sh 192.168.40.98 /tmp/layout.jsonl
+#   bash legacy_canvas_push.sh <IP> /tmp/layout.jsonl
 set -euo pipefail
 
-IP="${1:?usage: legacy_canvas_push.sh <IP> <layout-file|->}"
+INPUT_HOST="${1:?usage: legacy_canvas_push.sh <IP> <layout-file|->}"
 LAYOUT="${2:?usage: legacy_canvas_push.sh <IP> <layout-file|->}"
-API="http://${IP}:8080/api/call"
+PORT="${XIAOZHI_PORT:-8080}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IP="$(PYTHONPATH="$SCRIPT_DIR/../scripts" python3 -c 'import sys; from quick_page_builder import DeviceClient; print(DeviceClient(sys.argv[1], port=int(sys.argv[2])).host)' "$INPUT_HOST" "$PORT")" || {
+    echo "ERROR: invalid or non-LAN device host" >&2; exit 2;
+}
+API="http://${IP}:${PORT}/api/call"
 declare -a LINES=()
 if [ "$LAYOUT" = "-" ]; then
     while IFS= read -r l; do [ -n "$l" ] && LINES+=("$l"); done
@@ -44,9 +49,47 @@ else
 fi
 [ "${#LINES[@]}" -gt 0 ] || { echo "ERROR: empty layout" >&2; exit 1; }
 
+# Validate every command before clearing the current page. Only canvas layout
+# operations are allowed; this prevents malformed/hostile JSONL from invoking
+# unrelated device tools after a destructive clear.
+python3 -c 'import json,sys
+sys.path.insert(0,sys.argv[1]); from quick_page_builder import BuildError,validate_element
+raws=sys.argv[2:]
+if len(raws)>31: raise BuildError("layout exceeds 30 elements plus optional refresh")
+ids=set()
+for index,raw in enumerate(raws):
+ d=json.loads(raw); tool=d.get("tool"); args=d.get("args")
+ allowed={"fridge.canvas.add_text","fridge.canvas.add_rect","fridge.canvas.add_line","fridge.canvas.add_image","fridge.canvas.refresh"}
+ if tool not in allowed or not isinstance(args,dict): raise BuildError("unsupported legacy canvas command")
+ if tool == "fridge.canvas.refresh":
+  if index!=len(raws)-1 or set(args)-{"refresh"}: raise BuildError("refresh must be last and contain no unknown fields")
+ else:
+  if args.get("refresh",False) is not False: raise BuildError("element refresh must be false")
+  command=tool.rsplit("_",1)[-1]
+  validate_element(command,args,index+1)
+  item_id=args["id"]
+  if item_id in ids: raise BuildError("duplicate id")
+  ids.add(item_id)
+if len(ids)>30: raise BuildError("layout exceeds 30 elements")' "$SCRIPT_DIR" "${LINES[@]}" || {
+        echo "ERROR: invalid legacy layout" >&2; exit 2;
+    }
+
+response_ok() {
+    python3 -c 'import json,sys
+d=json.load(sys.stdin)
+if d.get("error"): raise SystemExit(1)
+r=d.get("result",{})
+if r.get("isError"): raise SystemExit(1)
+content=r.get("content") or []
+if not content: raise SystemExit(1)
+inner=json.loads(content[0].get("text",""))
+if not isinstance(inner,dict) or inner.get("status") not in ("success","ok"): raise SystemExit(1)'
+}
+
 echo "→ clear canvas"
-curl -s --max-time 8 -X POST "$API" -H "Content-Type: application/json" \
-    -d '{"tool":"fridge.canvas.clear","args":{}}' >/dev/null || { echo "ERROR: clear failed (device offline?)" >&2; exit 1; }
+clear_response="$(curl -sS --fail-with-body --max-time 8 -X POST "$API" -H "Content-Type: application/json" \
+    -d '{"tool":"fridge.canvas.clear","args":{}}')" || { echo "ERROR: clear failed (device offline?)" >&2; exit 1; }
+printf '%s' "$clear_response" | response_ok || { echo "ERROR: device rejected clear: $clear_response" >&2; exit 1; }
 
 last="${LINES[${#LINES[@]}-1]}"
 if ! echo "$last" | grep -q '"fridge.canvas.refresh"'; then
@@ -55,10 +98,8 @@ fi
 
 ok=0; fail=0
 for cmd in "${LINES[@]}"; do
-    r=$(curl -s --max-time 8 -X POST "$API" -H "Content-Type: application/json" -d "$cmd")
-    # Device returns JSON-RPC: result.content[].text contains an ESCAPED inner JSON
-    # (\"status\":\"success\") — match the top-level unescaped "isError":false instead.
-    if echo "$r" | grep -q '"isError":false'; then
+    r=$(curl -sS --fail-with-body --max-time 8 -X POST "$API" -H "Content-Type: application/json" -d "$cmd") || r='{"error":"transport failure"}'
+    if printf '%s' "$r" | response_ok; then
         ok=$((ok+1))
         id=$(echo "$cmd" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
         echo "  ✓ ${id:-refresh}"

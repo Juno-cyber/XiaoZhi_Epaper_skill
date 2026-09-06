@@ -1,7 +1,7 @@
 # Custom Page Layout Templates
 
 Ready-made page designs for common use cases. Each template specifies elements
-as MCP `fridge.page.element.add` calls with exact coordinates.
+as `fridge.page.element.control action=add` calls with exact coordinates.
 
 Screen: 296×128 pixels. Safe area: x∈[5,291], y∈[5,123].
 
@@ -12,7 +12,7 @@ Screen: 296×128 pixels. Safe area: x∈[5,291], y∈[5,123].
 | 1 | Clock + Weather | `clock`, `date` | weather text | title, frame |
 | 2 | Daily Quote | — | quote text | title, separator |
 | 3 | Pixel Art | — | — | bitmap image |
-| 4 | CPU Dashboard | `cpu_temp`, `heap`, `uptime` | — | labels, frame |
+| 4 | System Dashboard | — | temperature, heap, uptime | labels, frame |
 | 5 | Holiday Countdown | — | days remaining | title, frame |
 | 6 | Today's Focus | — | focus text | title, frame |
 | 7 | Todo List (compact) | — | item text | title, checkboxes |
@@ -44,8 +44,8 @@ Elements:
  y=0  ┌──────────────────────────────────────────┐
  y=2  │ 每日一句                                 │  title (font=12, x=8, y=2)
  y=18 ══════════════════════════════════════════════  separator
- y=26 │ 不积跬步，无以至千里。                   │  quote (font=12, x=10, y=26, max_width=276)
- y=44 │                          —— 荀子《劝学》  │  author (font=12, x=200, y=44, align=right)
+ y=26 │ 不积跬步，无以至千里。                   │  quote (font=12, x=10, y=26; custom width is fixed)
+ y=44 │                          —— 荀子《劝学》  │  author (font=12, x=10, y=44, align=right)
  y=64 ══════════════════════════════════════════════  separator
  y=72 │ 💡 知识：蜂鸟是唯一能倒退飞行的鸟       │  knowledge (font=12, x=10, y=72)
  y=90 │                                          │
@@ -68,35 +68,35 @@ All text elements are Agent-pushed (cron every 6h or on voice command).
 
 Single image element. Upload 1-bpp bitmap via `POST /api/canvas_image?name=pixel_art_1`,
 then `element.add { type:"image", name:"pixel_art_1", x:84, y:16, w:128, h:96 }`.
-Use `fridge.page.clear` + re-add to swap images.
+Use `fridge.page.control action=clear` + re-add to swap images.
 
-## 4. CPU Dashboard Page
+## 4. System Dashboard Page
 
 ```
  y=0  ┌──────────────────────────────────────────┐
- y=2  │ CPU Dashboard                            │  title (font=12, x=8, y=2)
+ y=2  │ System Status                            │  title (font=12, x=8, y=2)
  y=18 ══════════════════════════════════════════════  separator
- y=26 │ Chip Temp:    52.3°C                     │  cpu_temp (dynamic_type, font=12, x=10, y=26)
- y=44 │ Free Heap:   Heap: 128KB                 │  heap (dynamic_type, font=12, x=10, y=44)
- y=62 │ Uptime:      Up: 1d 3h 42m               │  uptime (dynamic_type, font=12, x=10, y=62)
+ y=26 │ Chip Temp:    52.3°C                     │  Agent-pushed text (font=12, x=10, y=26)
+ y=44 │ Free Heap:   Heap: 128KB                 │  Agent-pushed text (font=12, x=10, y=44)
+ y=62 │ Uptime:      Up: 1d 3h 42m               │  Agent-pushed text (font=12, x=10, y=62)
  y=80 │                                          │
  y=96 │ WiFi: <IP>                               │  ip (static, font=12, x=10, y=96)
  y=112│ Flash: 16MB · PSRAM: 8MB                 │  hw info (static, font=12, x=10, y=112)
  y=128└──────────────────────────────────────────┘
 ```
 
-Device-side dynamic: `cpu_temp`, `heap`, `uptime` all use `dynamic_type`.
-Static: IP and hardware info set once at page creation.
+Firmware 2.0.7 supports only `clock` and `date` as device-side dynamic types.
+Push system metrics from an Agent/cron by updating stable text element IDs.
 
 ## 5. Holiday Countdown Page
 
 ```
  y=0  ┌──────────────────────────────────────────┐
- y=4  │ 距 下个假期                              │  title (font=12, center, x=148, y=4)
+ y=4  │ 距 下个假期                              │  title (font=12, center, x=10, y=4)
  y=24 │                                          │
- y=32 │         42                               │  days number (large text, font=16, center, x=148, y=32)
- y=52 │          天                              │  unit (font=12, center, x=148, y=52)
- y=72 │ 中秋节 09-29                             │  holiday name (Agent-pushed, font=12, center, x=148, y=72)
+ y=32 │         42                               │  days number (font=16, center, x=10, y=32)
+ y=52 │          天                              │  unit (font=12, center, x=10, y=52)
+ y=72 │ 中秋节 09-29                             │  holiday name (Agent-pushed, font=12, center, x=10, y=72)
  y=90 ══════════════════════════════════════════════  separator
  y=100│ 下一个: 国庆节 10-01 (54天)              │  next holiday (Agent-pushed, font=12, x=10, y=100)
  y=128└──────────────────────────────────────────┘
@@ -108,13 +108,13 @@ Agent cron (daily) calculates days to next Chinese legal holiday and pushes text
 
 ```
  y=0  ┌──────────────────────────────────────────┐
- y=4  │ 🎯 今日 Focus                            │  title (font=16, center, x=148, y=4)
+ y=4  │ 🎯 今日 Focus                            │  title (font=16, center, x=10, y=4)
  y=28 ══════════════════════════════════════════════  separator
  y=40 │                                          │
- y=48 │     完成自定义页面验证                   │  focus text (font=16, center, x=148, y=48)
+ y=48 │     完成自定义页面验证                   │  focus text (font=16, center, x=10, y=48)
  y=72 │                                          │
  y=90 ══════════════════════════════════════════════  separator
- y=100│ 说"设置Focus..."修改                    │  hint (font=12, center, x=148, y=100)
+ y=100│ 说"设置Focus..."修改                    │  hint (font=12, center, x=10, y=100)
  y=128└──────────────────────────────────────────┘
 ```
 
@@ -191,7 +191,7 @@ Elements（固件 2.0.7，legacy 名与聚合名均可 — 全部 refresh=false�
 完整推屏序列（实测通过）：
 
 ```bash
-IP=192.168.40.98
+IP="${1:?usage: script <device-ip>}"
 # 1. 角落禅绕画先上传（可换 mandala/rose/lissajous, seed 随机）
 python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py \
   --upload $IP --pattern rose --name zp --region 196,6,92,62 --seed $RANDOM

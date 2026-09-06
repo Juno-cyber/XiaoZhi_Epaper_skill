@@ -11,7 +11,7 @@ Usage:
   zentangle_generator.py --gen <name> [--seed N] [--out /tmp/x.png] [--raw /tmp/x.raw]
   zentangle_generator.py --upload <IP> [--name <n>] [--seed N]   # render + upload to device
 """
-import argparse, math, os, random, sys
+import argparse, math, os, random, sys, tempfile
 import numpy as np
 
 W, H = 296, 128
@@ -742,11 +742,11 @@ def render_png(img_set, path, scale=2):
     return path
 
 def upload(ip, name, data):
-    import urllib.request
-    req = urllib.request.Request(
-        f"http://{ip}:8080/api/canvas_image?name={name}", data=data,
-        headers={"Content-Type": "application/octet-stream"}, method="POST")
-    return urllib.request.urlopen(req, timeout=10).read().decode()
+    from quick_page_builder import DeviceClient
+    client = DeviceClient(ip)
+    client.health()
+    client.upload_image(name, data)
+    return 'success'
 
 # ---------------------------------------------------------------- CLI
 
@@ -787,9 +787,11 @@ def main():
             x0, y0 = c * cell_w, r * cell_h
             gd.rectangle([x0 + 3, y0 + 3, x0 + cell_w - 3, y0 + cell_h - 3], fill='white', outline='#bbbbbb')
             img_set = PATTERNS[n](random.randrange(10**6))
-            render_png(img_set, '/tmp/_z.png', scale=1)
-            from PIL import Image as I2
-            small = I2.open('/tmp/_z.png').resize((W * 2, H * 2), Image.NEAREST)
+            with tempfile.NamedTemporaryFile(suffix='.png') as temporary:
+                render_png(img_set, temporary.name, scale=1)
+                from PIL import Image as I2
+                with I2.open(temporary.name) as source:
+                    small = source.resize((W * 2, H * 2), Image.NEAREST)
             grid.paste(small, (x0 + 3, y0 + 3))
             gd.text((x0 + 8, y0 + H * 2 + 6), n, fill='black', font=font)
         out = os.path.expanduser('~/.hermes/xiaozhi_canvas/zentangle_overview.png')
@@ -818,8 +820,10 @@ def main():
         if args.region:
             try:
                 rx, ry, rw, rh = (int(v) for v in args.region.split(','))
-            except Exception:
+            except (TypeError, ValueError):
                 print('ERROR: --region must be "x0,y0,w,h"', file=sys.stderr); sys.exit(1)
+            if rx < 0 or ry < 0 or rw <= 0 or rh <= 0 or rx + rw > W or ry + rh > H:
+                print('ERROR: --region must fit inside the 296x128 screen', file=sys.stderr); sys.exit(1)
             if pname not in PATCH_OK:
                 print(f'WARNING: {pname} not in PATCH_OK (may render empty in a small region)', file=sys.stderr)
             img_set = gen_patch(pname, seed, rx, ry, rw, rh)
@@ -834,4 +838,8 @@ def main():
     ap.print_help()
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f'ERROR: {exc}', file=sys.stderr)
+        raise SystemExit(1)

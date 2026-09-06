@@ -1,7 +1,7 @@
 # 画布自动刷新 Cron Prompt 模板
 
 > 适用：xiaozhi 墨水屏设备（固件 2.0.7），每 30 分钟自动刷新 canvas 画布。
-> 用法：复制本 prompt 内容到 cronjob 创建/更新，修改设备 IP 等参数。
+> 用法：让 cronjob 引用本文件；设备地址在运行时自动发现，不在模板中保存私有配置。
 > 关联：`references/canvas-creativity.md`（三层防重复机制）、`references/hermes-workflow.md`（cron 模式说明）。
 >
 > ⚠️ 多机一致性设计（2026-08-05）：本文件是 cron 行为规则的**唯一来源**（已入库 git）。
@@ -26,12 +26,12 @@
 ```
 ## 任务：刷新 xiaozhi ESP32 墨水屏画布
 
-设备 IP: 192.168.40.98 (端口 8080)
-固件版本: 2.0.7 — 聚合器与 legacy 名都可用（推荐聚合名 fridge.canvas.control 等）
+设备地址必须在每次运行时通过 `python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/xiaozhi_discovery.py` 发现；禁止写死 IP。随后 GET / 确认 `status=ok` 和预期板型，再进行任何写操作。
+固件 2.0.7 推荐聚合名；先从健康响应读取版本，不要假定版本。
 
 ### 时间窗口判断
-- 获取当前时间：`date '+%H'`
-- 如果当前小时 < 7 或 ≥ 22:30，则静默退出（不做任何事）
+- 获取当前时间：`date '+%H%M'`，按四位 HHMM 比较
+- 如果时间 < 0700 或 ≥ 2230，则静默退出（不做任何事）
 - 如果在 7:00-22:30 之间，继续执行
 
 ### 时段意图权重
@@ -87,11 +87,12 @@ heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee
    - 若输出带 API 失败提示或无输出，换类别重试：`--cat i` → `--cat k` → `--source jinrishici` → `--source iciba`
    - 连续 3 源失败才允许素材池兜底
 4. 根据反重复规则选图标、版式（图标与版式可按主意图选）
-5. 清除画布：`fridge.canvas.clear` with refresh=false
-6. 逐个添加元素：fridge.canvas.add_text / add_image / add_rect / add_line，全部 refresh=false；每个 text 的 `text` 字段直接填入第 3 步确定的文案（含脚注 source 原串），不得二次改动
-7. 最后一个元素 refresh=true 刷新屏幕
-8. 追加历史到 `~/.hermes/xiaozhi_canvas/history.jsonl`（一行JSON：ts, slot, intent, layout, icons, text前20字）
-9. 输出一句话摘要以供记录（如"刷新完成：陪伴·A版式·太阳图标"）
+5. 先用 quick_page_builder.py 的 `--check` 对整份布局做离线校验；任何错误都应停止，不能清屏
+6. 通过 `fridge.canvas.control` action=clear 清除画布，refresh=false
+7. 通过 `fridge.canvas.control` 的 add_text / add_image / add_rect / add_line 逐个添加，全部 refresh=false；每个 text 的 `text` 字段直接填入第 3 步确定的文案（含脚注 source 原串），不得二次改动
+8. 最后调用 `fridge.canvas.control` action=refresh；逐条检查内外层错误，任何失败都以失败状态结束
+9. 仅在刷新成功后追加历史到 `~/.hermes/xiaozhi_canvas/history.jsonl`（一行JSON：ts, slot, intent, layout, icons, text）
+10. 输出一句话摘要以供记录（如"刷新完成：陪伴·A版式·太阳图标"）
 
 ### 布局约束
 - 安全区域: x∈[5,291], y∈[5,123]

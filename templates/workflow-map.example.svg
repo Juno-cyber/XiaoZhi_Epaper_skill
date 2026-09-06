@@ -2,7 +2,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1180" height="925.6800000000001" viewBox="0 0 1180 925.6800000000001">
 <rect x="0" y="0" width="1180" height="3000" fill="#ffffff" stroke="none" stroke-width="1" rx="0" />
 <text x="24" y="32" font-size="22" text-anchor="start" fill="#111" font-weight="bold" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >小智 定时任务 × 屏幕显示 · 工作流总览</text>
-<text x="24" y="56" font-size="12" text-anchor="start" fill="#666" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >设备 好运来的小智 · 192.168.1.10 · 固件 2.0.7 · 生成于 2026-09-01 00:54</text>
+<text x="24" y="56" font-size="12" text-anchor="start" fill="#666" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >设备 xiaozhi e-paper · 192.168.1.10 · 固件 2.0.7 · 示例</text>
 <rect x="24" y="66" width="1132" height="26" fill="#f6f6f6" stroke="#e0e0e0" stroke-width="1" rx="4" />
 <text x="36" y="83" font-size="12" text-anchor="start" fill="#333" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >定时任务 4 · 写屏任务 2 · 页面 8 · 最近刷新 2026-08-31 22-30</text>
 <text x="24" y="116" font-size="14" text-anchor="start" fill="#111" font-weight="bold" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >① 定时任务（cron jobs）—— 谁在驱动屏幕</text>
@@ -19,7 +19,7 @@
 <text x="182" y="156" font-size="11" text-anchor="start" fill="#2fa06b" font-weight="bold" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >ok</text>
 <text x="232" y="156" font-size="10" text-anchor="start" fill="#555" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >08-31T09:05</text>
 <text x="344" y="156" font-size="10" text-anchor="start" fill="#555" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >09-01T09:00</text>
-<text x="456" y="156" font-size="11" text-anchor="start" fill="#666" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >feishu 报告</text>
+<text x="456" y="156" font-size="11" text-anchor="start" fill="#666" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >external report</text>
 <text x="724" y="156" font-size="10" text-anchor="start" fill="#555" font-weight="normal" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" >Agent(glm-5.2)</text>
 <rect x="24" y="172" width="1132" height="26" fill="#fff" stroke="#eee" stroke-width="1" rx="0" />
 <rect x="24" y="172" width="3" height="26" fill="#999" stroke="none" stroke-width="1" rx="0" />

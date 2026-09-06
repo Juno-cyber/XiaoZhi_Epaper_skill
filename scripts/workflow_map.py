@@ -7,7 +7,7 @@
   2) 画布历史台账          ~/.hermes/xiaozhi_canvas/history.jsonl （每 30 分钟一屏的实际输出）
   3) 设备当前页面/元素      http://<IP>:8080             （fridge.page.list / element.list / canvas.list）
 
-无第三方依赖（纯标准库），跨平台。输出 SVG 浏览器直接打开；juno 上可再转 PNG。
+无第三方依赖（纯标准库），跨平台。输出 SVG 可直接在浏览器中打开。
 
 用法：
   python3 workflow_map.py --ip 192.168.1.10 \
@@ -15,30 +15,25 @@
       --history ~/.hermes/xiaozhi_canvas/history.jsonl \
       --out workflow_map.svg
 """
-import argparse, json, os, re, sys, urllib.request, urllib.error, datetime, html
+import argparse, datetime, html, json, os, re, sys
+
+from quick_page_builder import BuildError, DeviceClient
+
+MAX_INPUT_BYTES = 8 * 1024 * 1024
 
 # ---------- 小工具 ----------
 
 def load_json(path):
+    if os.path.getsize(path) > MAX_INPUT_BYTES:
+        raise ValueError(f'input file exceeds {MAX_INPUT_BYTES} bytes: {path}')
     with open(path, encoding='utf-8') as f:
         return json.load(f)
 
-def call_device(ip, tool, args):
+def call_device(client, tool, args):
     """调用设备 /api/call，返回内层解析后的 JSON（列表或字典），失败返回 None。"""
-    body = json.dumps({"tool": tool, "args": args}).encode()
-    req = urllib.request.Request(f"http://{ip}:8080/api/call", data=body,
-                                 headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            outer = json.loads(r.read().decode('utf-8'))
-    except (urllib.error.URLError, ValueError, OSError) as e:
-        return None
-    if "error" in outer:
-        return None
-    t = outer.get("result", {}).get("content", [{}])[0].get("text", "")
-    try:
-        return json.loads(t)
-    except ValueError:
+        return client.call(tool, args)
+    except BuildError:
         return None
 
 
@@ -55,14 +50,21 @@ def _expand(field, lo, hi, names=None):
         if '/' in chunk:
             chunk, step = chunk.split('/', 1)
             step = int(step)
+            if step <= 0:
+                raise ValueError('cron step must be positive')
         if '-' in chunk:
             a, b = chunk.split('-', 1)
             a, b = int(a), int(b)
+            if not lo <= a <= b <= hi:
+                raise ValueError('cron range is out of bounds')
             out.update(range(a, b + 1, step))
         elif names and chunk.lower() in names:
             out.add(names.index(chunk.lower()))
         else:
-            out.add(int(chunk))
+            value = int(chunk)
+            if not lo <= value <= hi:
+                raise ValueError('cron value is out of bounds')
+            out.add(value)
     return out
 
 def parse_cron(expr):
@@ -99,14 +101,25 @@ def humanize(expr):
 
 # ---------- 设备页面 / 元素 ----------
 
-def fetch_pages(ip):
-    pages = call_device(ip, 'fridge.page.control', {'action': 'list'})
-    return pages or []
+def fetch_pages(client):
+    pages = call_device(client, 'fridge.page.control', {'action': 'list'})
+    if not isinstance(pages, list):
+        return []
+    output = []
+    for page in pages[:15]:
+        if not isinstance(page, dict) or not isinstance(page.get('page'), int) or not 1 <= page['page'] <= 15:
+            continue
+        item = dict(page)
+        item['name'] = str(item.get('name') or f"page {item['page']}")[:80]
+        output.append(item)
+    return output
 
-def fetch_elements(ip, page):
+def fetch_elements(client, page):
     if page == 6:
-        return call_device(ip, 'fridge.canvas.control', {'action': 'list'}) or []
-    return call_device(ip, 'fridge.page.element.control', {'action': 'list', 'page': page}) or []
+        elements = call_device(client, 'fridge.canvas.control', {'action': 'list'})
+    else:
+        elements = call_device(client, 'fridge.page.element.control', {'action': 'list', 'page': page})
+    return [item for item in elements[:30] if isinstance(item, dict)] if isinstance(elements, list) else []
 
 
 # ---------- 判断 job 是否写屏 + 目标页 ----------
@@ -251,7 +264,7 @@ def build(jobs, history, device):
         buf.append(svg_text(last, pad + 208, y + 12, 10, 'start', '#555'))
         buf.append(svg_text(nxt, pad + 320, y + 12, 10, 'start', '#555'))
         tgt = job_target_page(j)
-        tgtxt = f'page {tgt}' if tgt else ('feishu 报告' if j.get('deliver') == 'origin' else '—')
+        tgtxt = f'page {tgt}' if tgt else ('external report' if j.get('deliver') == 'origin' else '—')
         buf.append(svg_text(tgtxt, pad + 432, y + 12, 11, 'start', c if is_dev else '#666',
                             'bold' if is_dev else 'normal'))
         kind = 'shell 脚本' if j.get('no_agent') else ('Agent(' + (j.get('model') or '?').split('/')[-1] + ')')
@@ -366,38 +379,56 @@ def main():
     ap.add_argument('--out', default='workflow_map.svg')
     args = ap.parse_args()
 
-    jobs = load_json(args.jobs).get('jobs', []) if os.path.exists(args.jobs) else []
+    jobs_data = load_json(args.jobs) if os.path.exists(args.jobs) else {}
+    jobs = jobs_data.get('jobs', []) if isinstance(jobs_data, dict) else []
+    if not isinstance(jobs, list):
+        raise ValueError('jobs input must contain a jobs array')
+    normalized_jobs = []
+    for index, job in enumerate(jobs[:1000]):
+        if not isinstance(job, dict):
+            continue
+        item = dict(job)
+        item['id'] = str(item.get('id') or f'job-{index}')[:128]
+        item['name'] = str(item.get('name') or item['id'])[:256]
+        if not isinstance(item.get('schedule'), dict):
+            item['schedule'] = {}
+        item['schedule']['expr'] = str(item['schedule'].get('expr', ''))[:256]
+        item['schedule_display'] = str(item.get('schedule_display', ''))[:256]
+        normalized_jobs.append(item)
+    jobs = normalized_jobs
 
     history = []
     if os.path.exists(args.history):
+        if os.path.getsize(args.history) > MAX_INPUT_BYTES:
+            raise ValueError(f'history file exceeds {MAX_INPUT_BYTES} bytes')
         with open(args.history, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    history.append(json.loads(line))
+                    item = json.loads(line)
+                    if isinstance(item, dict) and isinstance(item.get('ts'), str):
+                        for key in ('intent', 'layout', 'text'):
+                            item[key] = str(item.get(key, ''))[:2048]
+                        history.append(item)
                 except ValueError:
                     pass
 
     device = {'ip': args.ip, 'name': '', 'version': '', 'pages': [], 'elements': {}}
     if args.ip:
-        h = call_device(args.ip, 'device.network.info', {})
+        client = DeviceClient(args.ip)
+        hh = client.health()
+        device['name'] = hh.get('name', '')
+        device['version'] = hh.get('version', '')
+        h = call_device(client, 'device.network.info', {})
         if h:
             device['ip'] = h.get('ip') or args.ip
-        # 健康检查拿 name/version
-        try:
-            with urllib.request.urlopen(f"http://{args.ip}:8080/", timeout=8) as r:
-                hh = json.loads(r.read().decode('utf-8'))
-                device['name'] = hh.get('name', '')
-                device['version'] = hh.get('version', '')
-        except Exception:
-            pass
-        pages = fetch_pages(args.ip)
+        pages = fetch_pages(client)
         device['pages'] = pages
         for p in pages:
             pn = p.get('page')
-            device['elements'][pn] = fetch_elements(args.ip, pn)
+            device['elements'][pn] = fetch_elements(client, pn)
 
     svg = build(jobs, history, device)
     with open(args.out, 'w', encoding='utf-8') as f:
@@ -406,4 +437,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (BuildError, OSError, ValueError) as exc:
+        print(f'ERROR: {exc}', file=sys.stderr)
+        raise SystemExit(1)

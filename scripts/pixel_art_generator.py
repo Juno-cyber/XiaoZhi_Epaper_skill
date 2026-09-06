@@ -7,7 +7,7 @@
   python3 pixel_art_generator.py --list                          # 列出可用
   python3 pixel_art_generator.py --dump heart /tmp/heart.bin      # 导出单文件
 """
-import math, struct, sys, os, json, urllib.request, argparse
+import argparse, math, os, struct, sys
 
 W, H = 24, 24
 ROW_BYTES = (W + 7) // 8  # 3
@@ -402,14 +402,12 @@ ARTISTS = {
 }
 
 def upload(ip, name, bitmap):
-    req = urllib.request.Request(
-        f"http://{ip}:8080/api/canvas_image?name={name}",
-        data=bitmap,
-        headers={"Content-Type": "application/octet-stream"},
-        method="POST"
-    )
-    resp = urllib.request.urlopen(req, timeout=10)
-    return resp.read().decode()
+    # Import lazily because quick_page_builder imports the generators above.
+    from quick_page_builder import DeviceClient
+    client = DeviceClient(ip)
+    client.health()
+    client.upload_image(name, bitmap)
+    return "success"
 
 def main():
     parser = argparse.ArgumentParser(description="Pixel art generator & uploader")
@@ -458,4 +456,8 @@ def main():
         print(f"{name:10s} {len(bitmap)} bytes")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)

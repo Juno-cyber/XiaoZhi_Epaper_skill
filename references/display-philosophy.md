@@ -159,7 +159,7 @@ Canvas (Page 6) 更适合频繁更新的"日记式"内容。
 3. 选择表达形式（文字 + 图标 + 布局）
 4. 用 canvas.clear 清除旧内容 (refresh=false)
 5. 批量添加新元素 (refresh=false)
-6. 最后一个元素 refresh=true 刷新屏幕
+6. 最后单独调用一次 refresh 刷新屏幕
 7. 确认布局：留白足够、视觉简洁、一眼能懂
 ```
 

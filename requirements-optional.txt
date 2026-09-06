@@ -1,0 +1,4 @@
+# Optional utilities; discovery, HTTP control, layout validation, and quote fetching use stdlib only.
+numpy>=1.21
+Pillow>=8.0
+pyserial>=3.5
