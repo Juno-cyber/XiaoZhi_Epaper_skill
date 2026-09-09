@@ -5,7 +5,8 @@
 > 关联：`references/canvas-creativity.md`（三层防重复机制）、`references/hermes-workflow.md`（cron 模式说明）。
 >
 > ⚠️ 多机一致性设计（2026-08-05）：本文件是 cron 行为规则的**唯一来源**（已入库 git）。
-> cron job 的 prompt **不要**粘贴本文件全文，只写一行引用：
+> cron job 的 prompt **不要**粘贴本文件全文；先写可视化元数据，再写一行引用：
+>   `[XIAOZHI_CRON_META v1 page=6 mode=canvas-refresh]`
 >   「严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md
 >    中『Prompt 正文』的全部指令。文件缺失或无法读取时直接报错结束，禁止自行发挥。」
 > 这样改规则只需改本文件并 git push，所有机器下次 cron 自动生效，cron job 本身零漂移。
@@ -18,7 +19,7 @@
 #   deliver: "local"
 #   enabled_toolsets: ["terminal", "file"]
 #   skills: ["xiaozhi-control"]
-#   prompt: <一行引用指令，见上方多机一致性设计>
+#   prompt: <元数据标记 + 一行引用指令，见上方多机一致性设计>
 ```
 
 ## Prompt 正文

@@ -3,7 +3,7 @@ name: xiaozhi-control
 description: Discover, health-check, and control xiaozhi ESP32 devices on a trusted LAN over HTTP, including fridge data, e-paper pages, canvas layouts, images, and recipes. Use for local xiaozhi device operations; not for cloud/MQTT control.
 license: MIT
 metadata:
-  version: 2.1.0
+  version: 2.3.1
   author: Juno-cyber
   platforms: [linux, macos]
   prerequisites:
@@ -133,9 +133,63 @@ For design rules and layouts, read [references/display-philosophy.md](references
 - pixel_art_generator.py: list, generate, or upload 25 built-in 24×24 icons.
 - zentangle_generator.py: procedural full-screen line art; requires NumPy, and Pillow for PNG output/preview.
 - quote_fetcher.py: fresh copy with a configurable rolling deduplication window and audit log.
-- workflow_map.py: create an SVG overview of cron jobs, pages, and recent refreshes.
+- workflow_map.py: create a compact Litsea-style SVG of cron schedules, target pages, status, and risks.
 - crash_log.py: bounded serial capture; requires pyserial.
 - templates/todo-list-page.sh: ready-made custom-page layout.
+
+## Cron visualization and conversational delivery
+
+When creating or materially updating a cron job that writes a XiaoZhi page:
+
+1. Put this bounded marker at the very start of the job prompt, replacing the
+   page and mode with the real values:
+
+   ~~~text
+   [XIAOZHI_CRON_META v1 page=6 mode=canvas-refresh]
+   ~~~
+
+   Valid pages are 6–15. Use a short lowercase mode such as `canvas-refresh`,
+   `element-update`, or `page-rebuild`. The marker is visualization metadata;
+   it does not grant device permissions.
+2. After the scheduler confirms creation/update, generate a fresh view. Device
+   discovery is best-effort so an offline screen does not hide the cron result:
+
+   ~~~bash
+   python3 scripts/workflow_map.py --discover
+   ~~~
+
+   The default artifacts are
+   `~/.hermes/xiaozhi_canvas/workflow-map.svg` and `workflow-map.json`.
+3. Give the visual to the user in the same response. If the conversation can
+   display local images, embed the absolute SVG path. If it can attach files,
+   attach the SVG; use a PNG conversion only when the channel rejects SVG and a
+   converter is already available. Otherwise provide the absolute path plus a
+   concise status summary. Never claim the user received a visual when the
+   channel only received text.
+
+The SVG is intentionally compact and matches Litsea_Top: white surfaces,
+black/gray type, and `#FF5A5A` only for attention states and trigger points.
+It shows tasks, schedules, target pages, status, a compact 24-hour timeline,
+and risks. Do not add device-screen previews, per-job colors, or a color legend.
+Cron state belongs to Hermes, not the XiaoZhi device. Deliver this visualization
+through the Hermes conversation; do not expose it as a XiaoZhi device API or add
+it to a static device-control website that cannot access Hermes runtime data.
+
+If the user asked only to design or preview a schedule, do not create a real
+job just to draw it. Render a clearly labeled candidate instead:
+
+~~~bash
+python3 scripts/workflow_map.py --discover \
+  --preview-name "工作日提醒" --preview-schedule "0 8 * * MON-FRI" --preview-page 7
+~~~
+
+After the user authorizes creation, create the job and regenerate without the
+`--preview-*` arguments so the returned visual reflects scheduler state.
+
+Regenerate after create, update, pause/resume, or delete requests, and when the
+user asks to inspect automations. Do not regenerate on every scheduled run.
+Read [references/workflow-map.md](references/workflow-map.md) for the snapshot
+schema, legacy-task inference, delivery fallbacks, and privacy boundaries.
 
 Install optional Python dependencies from requirements-optional.txt. Shell templates additionally require Bash and curl. Windows users should run the skill under WSL; native Windows is not claimed as supported.
 

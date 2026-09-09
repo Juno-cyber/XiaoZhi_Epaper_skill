@@ -3,6 +3,7 @@ import http.client
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,7 @@ import quick_page_builder as builder
 import pixel_art_generator
 import quote_fetcher
 import workflow_map
+import workflow_snapshot
 import xiaozhi_discovery as discovery
 
 
@@ -344,6 +346,200 @@ class UtilityTests(unittest.TestCase):
         for expression in ("*/0 * * * *", "0 99 * * *", "0 20-10 * * *"):
             with self.subTest(expression=expression), self.assertRaises(ValueError):
                 workflow_map.parse_cron(expression)
+
+    def test_cron_parser_supports_steps_and_named_ranges(self):
+        parsed = workflow_map.parse_cron("*/30 7-8 * * MON-FRI")
+        self.assertEqual(parsed["minutes"], {0, 30})
+        self.assertEqual(parsed["hours"], {7, 8})
+        self.assertEqual(parsed["dow"], {1, 2, 3, 4, 5})
+
+
+class WorkflowSnapshotTests(unittest.TestCase):
+    def test_metadata_is_fixed_position_and_bounded(self):
+        marker = "[XIAOZHI_CRON_META v1 page=7 mode=element-update]\nDo work"
+        self.assertEqual(
+            workflow_snapshot.parse_job_meta(marker),
+            {"version": 1, "page": 7, "mode": "element-update"},
+        )
+        self.assertIsNone(workflow_snapshot.parse_job_meta("Do work\n" + marker))
+        self.assertIsNone(workflow_snapshot.parse_job_meta("[XIAOZHI_CRON_META v1 page=16 mode=x]"))
+
+    def test_snapshot_filters_and_redacts_job_secrets(self):
+        jobs = [
+            {
+                "id": "screen",
+                "name": "画布更新",
+                "prompt": "[XIAOZHI_CRON_META v1 page=6 mode=canvas-refresh]\nsecret prompt",
+                "skills": ["xiaozhi-control"],
+                "origin": {"chat_id": "secret-chat"},
+                "workdir": "/secret/path",
+                "schedule": {"kind": "cron", "expr": "*/30 7-22 * * *"},
+            },
+            {"id": "other", "name": "unrelated", "prompt": "secret"},
+        ]
+        snapshot = workflow_snapshot.build_snapshot(jobs, [], {}, executions_path=None)
+        self.assertEqual([job["id"] for job in snapshot["jobs"]], ["screen"])
+        encoded = json.dumps(snapshot, ensure_ascii=False)
+        self.assertNotIn("secret prompt", encoded)
+        self.assertNotIn("secret-chat", encoded)
+        self.assertNotIn("/secret/path", encoded)
+        self.assertEqual(snapshot["jobs"][0]["target"]["confidence"], "explicit")
+
+    def test_snapshot_strips_invalid_xml_unicode(self):
+        snapshot = workflow_snapshot.build_snapshot(
+            [{"id": "x", "name": "bad\ud800name", "skill": "xiaozhi-control"}],
+            [{"ts": "2026-01-01T00:00:00", "text": "bad\ufffetext"}],
+            {},
+            executions_path=None,
+        )
+        svg = workflow_map.build(snapshot["jobs"], snapshot["history"], snapshot["device"])
+        svg.encode("utf-8")
+        self.assertNotIn("\ud800", svg)
+        self.assertNotIn("\ufffe", svg)
+
+    def test_execution_database_open_failure_is_nonfatal_warning(self):
+        with mock.patch("workflow_snapshot.os.path.exists", return_value=True), \
+             mock.patch("workflow_snapshot.os.path.islink", return_value=False), \
+             mock.patch("workflow_snapshot.os.path.isfile", return_value=True), \
+             mock.patch("workflow_snapshot.os.path.getsize", return_value=1024), \
+             mock.patch("workflow_snapshot.sqlite3.connect", side_effect=workflow_snapshot.sqlite3.OperationalError("locked")):
+            snapshot = workflow_snapshot.build_snapshot(
+                [{"id": "x", "name": "画布", "skill": "xiaozhi-control"}], [], {}, executions_path="/tmp/executions.db"
+            )
+        self.assertIn("executions_unavailable", [item["code"] for item in snapshot["warnings"]])
+
+    def test_partial_device_read_is_visible_as_warning(self):
+        snapshot = workflow_snapshot.build_snapshot([], [], {"online": True, "partial": True}, executions_path=None)
+        self.assertIn("device_partial", [item["code"] for item in snapshot["warnings"]])
+
+    def test_device_content_is_not_rendered_in_compact_svg(self):
+        device = {
+            "online": True,
+            "ip": "127.0.0.1",
+            "pages": [{"page": 6, "name": "<script>alert(1)</script>", "builtin": True}],
+            "elements": {6: [{"type": "text", "id": "x", "text": "<script>x</script>", "x": 0, "y": 0}]},
+        }
+        snapshot = workflow_snapshot.build_snapshot([], [], device, executions_path=None)
+        svg = workflow_map.build(snapshot["jobs"], snapshot["history"], snapshot["device"])
+        self.assertNotIn("<script>", svg)
+        self.assertNotIn("&lt;script&gt;", svg)
+        self.assertNotIn("当前屏幕", svg)
+
+    def test_device_image_element_is_not_previewed(self):
+        device = {
+            "online": True,
+            "ip": "192.168.1.9",
+            "pages": [{"page": 6, "name": "Canvas", "builtin": True}],
+            "elements": {6: [{"type": "image", "id": "icon", "name": "sun", "x": 1, "y": 2, "w": 24, "h": 24}]},
+        }
+        snapshot = workflow_snapshot.build_snapshot([], [], device, executions_path=None)
+        svg = workflow_map.build(snapshot["jobs"], snapshot["history"], snapshot["device"])
+        self.assertNotIn(">sun</text>", svg)
+        self.assertNotIn("clipPath", svg)
+
+    def test_dense_schedule_has_bounded_timeline_points(self):
+        job = {
+            "id": "dense", "name": "高频画布", "enabled": True,
+            "schedule": {"kind": "cron", "expr": "* * * * *"},
+            "target": {"page": 6, "confidence": "explicit", "mode": "canvas-refresh"},
+        }
+        svg = workflow_map.build([job], [], {"online": False, "ip": "", "pages": [], "elements": {}})
+        self.assertIn(">高频</text>", svg)
+        self.assertLessEqual(svg.count("<circle "), workflow_map.MAX_TIMELINE_POINTS_PER_JOB)
+
+    def test_svg_uses_only_litsea_monochrome_and_brand_red(self):
+        job = {
+            "id": "x", "name": "提醒", "enabled": True, "last_status": "error",
+            "schedule": {"kind": "cron", "expr": "0 8 * * *"},
+            "target": {"page": 7, "confidence": "explicit", "mode": "element-update"},
+        }
+        svg = workflow_map.build([job], [], {"online": False}, warnings=[{"code": "device_offline"}])
+        colors = set(re.findall(r"#[0-9A-Fa-f]{6}", svg))
+        self.assertLessEqual(colors, set(workflow_map.COLOR.values()))
+        self.assertIn("#FF5A5A", colors)
+
+    def test_cli_writes_atomic_svg_and_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            jobs = os.path.join(directory, "jobs.json")
+            history = os.path.join(directory, "history.jsonl")
+            svg = os.path.join(directory, "map.svg")
+            with open(jobs, "w", encoding="utf-8") as handle:
+                json.dump({"jobs": [{"id": "x", "name": "画布", "skill": "xiaozhi-control", "prompt": "page 6"}]}, handle)
+            with open(history, "w", encoding="utf-8") as handle:
+                handle.write("{bad json}\n")
+            with mock.patch("sys.stdout", new=io.StringIO()) as output:
+                self.assertEqual(
+                    workflow_map.main(["--jobs", jobs, "--history", history, "--executions", os.path.join(directory, "missing.db"), "--out", svg]),
+                    0,
+                )
+            self.assertTrue(os.path.exists(svg))
+            self.assertTrue(os.path.exists(os.path.splitext(svg)[0] + ".json"))
+            self.assertIn("ARTIFACT_SVG=" + svg, output.getvalue())
+
+    def test_invalid_registered_schedule_does_not_block_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            jobs = os.path.join(directory, "jobs.json")
+            svg = os.path.join(directory, "map.svg")
+            with open(jobs, "w", encoding="utf-8") as handle:
+                json.dump({"jobs": [{
+                    "id": "bad", "name": "坏调度画布", "skill": "xiaozhi-control",
+                    "prompt": "page 6", "schedule": {"kind": "cron", "expr": "0 8 nope * *"},
+                }]}, handle)
+            self.assertEqual(workflow_map.main([
+                "--jobs", jobs, "--history", os.path.join(directory, "missing"),
+                "--executions", os.path.join(directory, "missing.db"), "--out", svg,
+            ]), 0)
+            with open(os.path.splitext(svg)[0] + ".json", encoding="utf-8") as handle:
+                snapshot = json.load(handle)
+            self.assertIn("invalid_schedule", [item["code"] for item in snapshot["warnings"]])
+
+    def test_atomic_output_refuses_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            real = os.path.join(directory, "real.svg")
+            link = os.path.join(directory, "link.svg")
+            with open(real, "w", encoding="utf-8") as handle:
+                handle.write("old")
+            os.symlink(real, link)
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                workflow_map.atomic_write_text(link, "new")
+            with open(real, encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "old")
+
+    def test_preview_is_rendered_without_writing_scheduler_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            jobs = os.path.join(directory, "jobs.json")
+            svg = os.path.join(directory, "preview.svg")
+            with open(jobs, "w", encoding="utf-8") as handle:
+                json.dump({"jobs": []}, handle)
+            with open(jobs, "rb") as handle:
+                original = handle.read()
+            self.assertEqual(
+                workflow_map.main([
+                    "--jobs", jobs,
+                    "--history", os.path.join(directory, "missing.jsonl"),
+                    "--executions", os.path.join(directory, "missing.db"),
+                    "--out", svg,
+                    "--preview-name", "工作日提醒",
+                    "--preview-schedule", "0 8 * * MON-FRI",
+                    "--preview-page", "7",
+                ]),
+                0,
+            )
+            with open(jobs, "rb") as handle:
+                self.assertEqual(handle.read(), original)
+            with open(os.path.splitext(svg)[0] + ".json", encoding="utf-8") as handle:
+                snapshot = json.load(handle)
+            self.assertEqual(snapshot["jobs"][-1]["last_status"], "preview")
+            self.assertEqual(snapshot["jobs"][-1]["target"]["page"], 7)
+            self.assertNotIn("prompt", snapshot["jobs"][-1])
+
+    def test_preview_requires_complete_valid_arguments(self):
+        with self.assertRaisesRegex(ValueError, "必须一起提供"):
+            workflow_map.main(["--preview-name", "incomplete"])
+        with self.assertRaisesRegex(ValueError, "有效的 5 段"):
+            workflow_map.main([
+                "--preview-name", "bad", "--preview-schedule", "not cron", "--preview-page", "6"
+            ])
 
 
 class DiscoveryTests(unittest.TestCase):

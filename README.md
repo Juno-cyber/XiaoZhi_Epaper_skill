@@ -37,7 +37,8 @@ bash deploy.sh --dry-run # 只预览将复制/清理的文件
    # 以后更新：git pull && bash deploy.sh
    ```
 2. **cron 规则**：`templates/canvas-creativity-cron-prompt.md` 是 cron 行为规则的唯一来源（已入库）。
-   cron job 的 prompt **不要**粘贴全文，只写一行引用指令：
+   cron job 的 prompt **不要**粘贴全文；首行写可视化元数据，下一行写引用指令：
+   > `[XIAOZHI_CRON_META v1 page=6 mode=canvas-refresh]`
    > 严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md 中『Prompt 正文』的全部指令。该模板文件是规则的唯一来源，随 skill 仓库 git 同步；若文件缺失或无法读取，直接报错结束。
    
    创建 cron job 参数：`schedule: "every 30m"`、`deliver: "local"`、`enabled_toolsets: ["terminal","file"]`、`skills: ["xiaozhi-control"]`。
@@ -106,6 +107,24 @@ EOF
 元素默认 `refresh=false` 批量添加，最后一行 `refresh` 统一刷新。
 执行前可加 `--check` 只验证布局；解析错误、越界、重复 ID、超过 30 个元素和设备错误都会返回非零退出码。
 
+### 5. 在对话中查看 Cron 可视化
+
+创建或修改小智定时任务后生成一张自包含 SVG：
+
+```bash
+python3 scripts/workflow_map.py --discover
+```
+
+默认输出到 `~/.hermes/xiaozhi_canvas/workflow-map.svg`，同时生成经过脱敏的
+`workflow-map.json`。对话客户端支持本地图片或附件时，Agent 会在同一条回复中直接展示/附上 SVG；设备暂时离线也会生成任务视图并标明离线。
+
+只想先看设计效果、尚未创建任务时，可以无副作用地生成候选预览：
+
+```bash
+python3 scripts/workflow_map.py --discover \
+  --preview-name "工作日提醒" --preview-schedule "0 8 * * MON-FRI" --preview-page 7
+```
+
 ## 功能概览
 
 | 功能 | 说明 |
@@ -117,6 +136,7 @@ EOF
 | 动态元素 | 设备端时钟/日期（无需 Agent）+ Agent 推送（天气/系统指标/股价等）|
 | 像素画 | 25 种内置 24×24 像素画素材，自动生成并上传 |
 | Web 控制台 | 浏览器端管理界面，支持手绘、拖拽、预览 |
+| Cron 可视化 | Hermes 在对话中展示任务、时间轴、目标页面、状态与风险 |
 | 屏幕设计哲学 | 10 条原则 + 5 个刷新前问题，让屏幕成为 Agent 的"生活画布" |
 
 ## 文档索引

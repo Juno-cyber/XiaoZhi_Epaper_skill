@@ -48,3 +48,14 @@ Automation should:
 ## Shared cron prompt
 
 Reference templates/canvas-creativity-cron-prompt.md from the job instead of embedding a copy. This keeps behavior synchronized with the deployed Skill. Local schedules, delivery preferences, and device selection belong in job configuration rather than in the reusable Skill.
+
+Put the visualization marker before the reference line:
+
+~~~text
+[XIAOZHI_CRON_META v1 page=6 mode=canvas-refresh]
+严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md 中「Prompt 正文」的全部指令。
+~~~
+
+After the scheduler confirms a create or update, run
+`python3 scripts/workflow_map.py --discover` and return the generated SVG in
+the same conversation when the channel supports images or file attachments.

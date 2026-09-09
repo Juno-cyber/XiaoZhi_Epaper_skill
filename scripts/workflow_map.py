@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """workflow_map.py — 生成「小智定时任务 × 屏幕显示」工作流总览图 (自包含 SVG)。
 
-把三处来源合成一张图，回答：「用户用 skill 建了哪些定时任务、它们又如何改变了屏幕」：
+把运行时事实合成一张图，回答：「用户用 skill 建了哪些定时任务、它们又如何改变了屏幕」。
+也可用 --preview-* 在不创建 cron 的情况下预览一个候选任务。
   1) Hermes cron 注册表   ~/.hermes/cron/jobs.json      （每个 job 的调度/状态/目标）
   2) 画布历史台账          ~/.hermes/xiaozhi_canvas/history.jsonl （每 30 分钟一屏的实际输出）
   3) 设备当前页面/元素      http://<IP>:8080             （fridge.page.list / element.list / canvas.list）
@@ -15,9 +16,17 @@
       --history ~/.hermes/xiaozhi_canvas/history.jsonl \
       --out workflow_map.svg
 """
-import argparse, datetime, html, json, os, re, sys
+import argparse
+import datetime
+import html
+import json
+import os
+import re
+import sys
+import tempfile
 
 from quick_page_builder import BuildError, DeviceClient
+from workflow_snapshot import MAX_JOBS, build_snapshot, infer_target_page
 
 MAX_INPUT_BYTES = 8 * 1024 * 1024
 
@@ -28,6 +37,29 @@ def load_json(path):
         raise ValueError(f'input file exceeds {MAX_INPUT_BYTES} bytes: {path}')
     with open(path, encoding='utf-8') as f:
         return json.load(f)
+
+
+def atomic_write_text(path, content):
+    """Replace an output atomically and refuse symlink destinations."""
+    target = os.path.abspath(os.path.expanduser(path))
+    parent = os.path.dirname(target)
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    if os.path.lexists(target) and os.path.islink(target):
+        raise ValueError(f'refusing symlink output: {target}')
+    descriptor, temporary = tempfile.mkstemp(prefix='.workflow-map-', dir=parent, text=True)
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return target
 
 def call_device(client, tool, args):
     """调用设备 /api/call，返回内层解析后的 JSON（列表或字典），失败返回 None。"""
@@ -42,6 +74,11 @@ def call_device(client, tool, args):
 DOW = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
 def _expand(field, lo, hi, names=None):
+    def parse_value(value):
+        if names and value.lower() in names:
+            return names.index(value.lower())
+        return int(value)
+
     out = set()
     for chunk in field.split(','):
         if chunk in ('*', '?'):
@@ -52,29 +89,35 @@ def _expand(field, lo, hi, names=None):
             step = int(step)
             if step <= 0:
                 raise ValueError('cron step must be positive')
+        if chunk in ('*', '?'):
+            out.update(range(lo, hi + 1, step))
+            continue
         if '-' in chunk:
             a, b = chunk.split('-', 1)
-            a, b = int(a), int(b)
+            a, b = parse_value(a), parse_value(b)
             if not lo <= a <= b <= hi:
                 raise ValueError('cron range is out of bounds')
             out.update(range(a, b + 1, step))
-        elif names and chunk.lower() in names:
-            out.add(names.index(chunk.lower()))
         else:
-            value = int(chunk)
+            value = parse_value(chunk)
             if not lo <= value <= hi:
                 raise ValueError('cron value is out of bounds')
-            out.add(value)
+            if step == 1:
+                out.add(value)
+            else:
+                out.update(range(value, hi + 1, step))
     return out
 
 def parse_cron(expr):
     parts = expr.split()
     if len(parts) != 5:
         return None
-    minute, hour, _dom, _mon, dow = parts
+    minute, hour, dom, month, dow = parts
     return {
         'minutes': _expand(minute, 0, 59),
         'hours': _expand(hour, 0, 23),
+        'days': _expand(dom, 1, 31),
+        'months': _expand(month, 1, 12),
         'dow': _expand(dow, 0, 6, DOW),
     }
 
@@ -99,341 +142,365 @@ def humanize(expr):
     return expr
 
 
-# ---------- 设备页面 / 元素 ----------
-
-def fetch_pages(client):
-    pages = call_device(client, 'fridge.page.control', {'action': 'list'})
-    if not isinstance(pages, list):
-        return []
-    output = []
-    for page in pages[:15]:
-        if not isinstance(page, dict) or not isinstance(page.get('page'), int) or not 1 <= page['page'] <= 15:
-            continue
-        item = dict(page)
-        item['name'] = str(item.get('name') or f"page {item['page']}")[:80]
-        output.append(item)
-    return output
-
-def fetch_elements(client, page):
-    if page == 6:
-        elements = call_device(client, 'fridge.canvas.control', {'action': 'list'})
-    else:
-        elements = call_device(client, 'fridge.page.element.control', {'action': 'list', 'page': page})
-    return [item for item in elements[:30] if isinstance(item, dict)] if isinstance(elements, list) else []
-
-
 # ---------- 判断 job 是否写屏 + 目标页 ----------
 
 def job_target_page(job):
-    """粗略判断 job 写给哪个页面；写屏返回页码，否则 None。"""
-    blob = ' '.join([str(job.get('name', '')), str(job.get('prompt', '')),
-                     str(job.get('script', ''))])
-    low = blob.lower()
-    is_screen = ('xiaozhi' in low or '墨水' in blob or 'e-paper' in low or '画布' in blob
-                 or '屏幕' in blob or '页' in blob and '排班' in blob)
-    if job.get('skill') == 'xiaozhi-control':
-        is_screen = True
-    if not is_screen:
-        return None
-    m = re.search(r'页\s*(\d+)', blob) or re.search(r'page\s*([0-9]+)', low)
-    if m:
-        return int(m.group(1))
-    if ('画布' in blob or 'canvas' in low):
-        return 6
-    return None
+    """Return the explicit/inferred page from raw or sanitized job data."""
+    target = job.get('target')
+    if isinstance(target, dict):
+        page = target.get('page')
+        return page if isinstance(page, int) and 6 <= page <= 15 else None
+    return infer_target_page(job)[0]
 
 
 # ---------- SVG 生成 ----------
 
-PALETTE = ['#e07b39', '#3f7fbf', '#2fa06b', '#9b59b6', '#c0392b', '#d68910']
+COLOR = {
+    'bg': '#FFFFFF',
+    'surface': '#FAFAFA',
+    'surface_2': '#F5F5F5',
+    'text': '#0A0A0A',
+    'text_2': '#3A3A3A',
+    'muted': '#6E6E6E',
+    'border': '#E5E5E5',
+    'strong': '#1A1A1A',
+    'red': '#FF5A5A',
+}
+MAX_TIMELINE_POINTS_PER_JOB = 48
 
-def svg_text(c, x, y, size, anchor='start', fill='#222', weight='normal', extra=''):
+def svg_text(c, x, y, size, anchor='start', fill='#0A0A0A', weight='normal', extra='', family='sans'):
+    c = html.escape(str(c), quote=False)
+    fonts = ('Noto Serif CJK SC, Noto Serif SC, Songti SC, STSong, SimSun, serif' if family == 'serif'
+             else 'Noto Sans CJK SC, PingFang SC, Microsoft YaHei, Noto Sans SC, Arial, sans-serif')
     return (f'<text x="{x}" y="{y}" font-size="{size}" text-anchor="{anchor}" '
-            f'fill="{fill}" font-weight="{weight}" font-family="Noto Sans CJK SC, WenQuanYi Zen Hei, Arial, sans-serif" {extra}>{c}</text>')
+            f'fill="{fill}" font-weight="{weight}" font-family="{fonts}" {extra}>{c}</text>')
 
-def svg_rect(x, y, w, h, fill='none', stroke='#bbb', sw=1, rx=0, extra=''):
-    return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="{sw}" rx="{rx}" {extra}/>'
+def svg_rect(x, y, w, h, fill='none', stroke='#E5E5E5', sw=1, rx=0, dash=None, extra=''):
+    dash_attr = f' stroke-dasharray="{dash}"' if dash else ''
+    return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="{sw}" rx="{rx}"{dash_attr} {extra}/>'
 
-def svg_line(x1, y1, x2, y2, stroke='#666', sw=1, dash=None):
+def svg_line(x1, y1, x2, y2, stroke='#6E6E6E', sw=1, dash=None):
     d = f' stroke-dasharray="{dash}"' if dash else ''
     return f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="{sw}"{d}/>'
 
-def page_mockup(page, name, elems, x, y, s=0.52, title_color='#333'):
-    """在 (x,y) 画一个 296x128 屏幕缩略图（比例 s），含元素。"""
-    W, H = 296 * s, 128 * s
-    out = [svg_rect(x, y, W, H, fill='#fff', stroke=title_color, sw=1.4, rx=2)]
-    cid = f'clip_{page}_{x}_{y}'
-    out.append(f'<clipPath id="{cid}"><rect x="{x}" y="{y}" width="{W}" height="{H}"/></clipPath>')
-    out.append(f'<g clip-path="url(#{cid})">')
-    for e in elems:
-        t = e.get('type')
-        if t == 'text':
-            fs = int(e.get('font_size', 12)) * s
-            align = e.get('align', 'left')
-            mw = int(e.get('max_width', 276)) * s
-            tx = x + e.get('x', 0) * s
-            ty = y + e.get('y', 0) * s + fs  # SVG 基线
-            anchor = 'start'; xx = tx
-            if align == 'center':
-                anchor = 'middle'; xx = tx + mw / 2
-            elif align == 'right':
-                anchor = 'end'; xx = tx + mw
-            color = '#b23' if e.get('dtype') else '#111'
-            out.append(svg_text(html.escape(e.get('text', ''))[:40], xx, ty, fs, anchor, color))
-        elif t == 'rect':
-            f = '#222' if e.get('filled') else 'none'
-            ex, ey = x + e.get('x', 0) * s, y + e.get('y', 0) * s
-            out.append(svg_rect(ex, ey, e.get('w', 0) * s, e.get('h', 0) * s, fill=f, stroke='#222', sw=0.8))
-        elif t == 'line':
-            out.append(svg_line(x + e.get('x1', 0) * s, y + e.get('y1', 0) * s,
-                                x + e.get('x2', 0) * s, y + e.get('y2', 0) * s,
-                                stroke='#222', sw=max(0.6, e.get('width', 1) * s)))
-        elif t == 'image':
-            ex, ey = x + e.get('x', 0) * s, y + e.get('y', 0) * s
-            w, h = e.get('w', 24) * s, e.get('h', 24) * s
-            out.append(svg_rect(ex, ey, w, h, fill='#f2f2f2', stroke='#999', sw=0.6, dash='4,3'))
-            out.append(svg_text(html.escape(e.get('name', 'img'))[:8], ex + 2, ey + h / 2, 7, 'start', '#888'))
-    out.append('</g>')
-    return out
+def warning_label(warning):
+    code = warning.get('code')
+    labels = {
+        'device_offline': '设备当前离线，任务信息仍可查看',
+        'device_partial': '设备在线，但部分页面信息读取失败',
+        'target_inferred': f'任务 {warning.get("job_id", "-")[:8]} 的目标页来自旧配置推断',
+        'failure_streak': f'任务 {warning.get("job_id", "-")[:8]} 已连续失败 {warning.get("count", 0)} 次',
+        'page_conflict': f'页面 {warning.get("page", "-")} 被多个启用任务共同写入',
+        'invalid_schedule': f'任务 {warning.get("job_id", "-")[:8]} 的 cron 表达式无效',
+        'executions_unavailable': '近期执行记录暂时不可读取',
+        'jobs_truncated': f'任务过多，仅显示前 {MAX_JOBS} 个',
+    }
+    return labels.get(code, '检测到需要关注的任务配置')
 
 
-def build(jobs, history, device):
-    """组装整张 SVG，返回字符串。"""
-    ip = device['ip'] or '（未连设备）'
-    ver = device.get('version', '')
-    devname = device.get('name', '')
-    pages = device['pages']
+def job_display_name(job, limit=28):
+    """Prefer a concise label when legacy jobs stored prompt text as their name."""
+    name = str(job.get('name') or job.get('id') or '未命名任务').strip()
+    if len(name) > 48 or name.startswith(('你是 ', '请执行', '严格读取')):
+        page = job_target_page(job)
+        name = f'小智页面 {page} 定时任务' if page else '小智定时任务'
+    return name[:limit]
 
-    dev_jobs = [j for j in jobs if job_target_page(j) is not None]
-    dev_jobs = sorted(dev_jobs, key=lambda j: j.get('created_at') or '')
-    color = {}
-    for i, j in enumerate(dev_jobs):
-        color[j['id']] = PALETTE[i % len(PALETTE)]
 
-    buf = []
-    W = 1180
-    pad = 24
+def build(jobs, history, device, generated_at=None, warnings=None):
+    """Render a compact Litsea-style black, white, and red cron overview."""
+    warnings = warnings if isinstance(warnings, list) else []
+    device = device if isinstance(device, dict) else {}
+    history = history if isinstance(history, list) else []
+    jobs = jobs if isinstance(jobs, list) else []
+    screen_jobs = [
+        job for job in jobs
+        if job.get('enabled', True) and job_target_page(job) is not None
+    ]
 
-    # ---------- 头部 ----------
-    chips = (f'定时任务 {len(jobs)} · 写屏任务 {len(dev_jobs)} · 页面 {len(pages)}'
-             f' · 最近刷新 {history[-1]["ts"][:16] if history else "-"}')
-    ym = 20
-    buf.append(svg_rect(0, 0, W, 3000, fill='#ffffff', stroke='none'))
-    buf.append(svg_text('小智 定时任务 × 屏幕显示 · 工作流总览', pad, pad + 8, 22, 'start', '#111', 'bold'))
-    buf.append(svg_text(f'设备 {devname} · {ip} · 固件 {ver} · 生成于 {datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}',
-                        pad, pad + 32, 12, 'start', '#666'))
-    buf.append(svg_rect(pad, pad + 42, W - 2 * pad, 26, fill='#f6f6f6', stroke='#e0e0e0', rx=4))
-    buf.append(svg_text(chips, pad + 12, pad + 59, 12, 'start', '#333'))
-    y = pad + 92
+    width = 1040
+    pad = 36
+    content_width = width - pad * 2
+    out = ['<rect x="0" y="0" width="100%" height="100%" fill="#FFFFFF"/>']
 
-    # ---------- 1) 定时任务面板 ----------
-    buf.append(svg_text('① 定时任务（cron jobs）—— 谁在驱动屏幕', pad, y, 14, 'start', '#111', 'bold'))
-    y += 10
-    col = {'调度': 16, '状态': 158, '上次': 208, '下次': 320, '目标/内容': 432, '类型': 700}
-    # 表头
-    buf.append(svg_text('任务 / 调度', pad + 6, y + 14, 11, 'start', '#999'))
-    buf.append(svg_text('状态', pad + 158, y + 14, 11, 'start', '#999'))
-    buf.append(svg_text('上次运行', pad + 208, y + 14, 11, 'start', '#999'))
-    buf.append(svg_text('下次运行', pad + 320, y + 14, 11, 'start', '#999'))
-    buf.append(svg_text('写屏目标', pad + 432, y + 14, 11, 'start', '#999'))
-    buf.append(svg_text('方式', pad + 700, y + 14, 11, 'start', '#999'))
+    # Brand header: restrained serif title and one Litsea-red rule.
+    out.append(svg_rect(pad, 32, 4, 52, fill=COLOR['red'], stroke='none', rx=2))
+    out.append(svg_text('小智定时任务', pad + 18, 56, 26, fill=COLOR['text'], weight='bold', family='serif'))
+    out.append(svg_text('Cron overview · 简洁查看任务、时间与风险', pad + 18, 78, 12, fill=COLOR['muted']))
+    generated_label = (generated_at or datetime.datetime.now().isoformat())[:16].replace('T', ' ')
+    out.append(svg_text(f'更新于 {generated_label}', width - pad, 55, 11, anchor='end', fill=COLOR['muted']))
+
+    online = bool(device.get('online'))
+    partial = bool(device.get('partial'))
+    device_label = '在线' if online and not partial else '部分可用' if online else '离线'
+    active_count = sum(1 for job in jobs if job.get('enabled', True))
+    last_refresh = history[-1].get('ts', '')[5:16].replace('T', ' ') if history else '暂无'
+    metrics = [
+        ('任务', str(len(jobs)), COLOR['text']),
+        ('启用', str(active_count), COLOR['text']),
+        ('风险', str(len(warnings)), COLOR['red'] if warnings else COLOR['text']),
+        ('设备', device_label, COLOR['red'] if not online or partial else COLOR['text']),
+    ]
+    gap = 12
+    card_width = (content_width - gap * 3) / 4
+    for index, (label, value, value_color) in enumerate(metrics):
+        x = pad + index * (card_width + gap)
+        out.append(svg_rect(x, 108, card_width, 70, fill=COLOR['surface'], stroke=COLOR['border'], rx=4))
+        out.append(svg_text(label, x + 16, 132, 11, fill=COLOR['muted']))
+        out.append(svg_text(value, x + 16, 160, 22, fill=value_color, weight='bold'))
+    out.append(svg_text(f'最近画布刷新 {last_refresh}', width - pad, 199, 10, anchor='end', fill=COLOR['muted']))
+
+    # Task list: one quiet row per task, red reserved for attention states.
+    y = 220
+    out.append(svg_text('任务', pad, y, 17, fill=COLOR['text'], weight='bold', family='serif'))
+    out.append(svg_text('名称', pad + 18, y + 28, 10, fill=COLOR['muted']))
+    out.append(svg_text('调度', pad + 420, y + 28, 10, fill=COLOR['muted']))
+    out.append(svg_text('目标', pad + 650, y + 28, 10, fill=COLOR['muted']))
+    out.append(svg_text('状态', pad + 816, y + 28, 10, fill=COLOR['muted']))
+    y += 40
+    if not jobs:
+        out.append(svg_rect(pad, y, content_width, 58, fill=COLOR['surface'], stroke=COLOR['border'], rx=4))
+        out.append(svg_text('暂无小智定时任务', pad + 18, y + 34, 13, fill=COLOR['muted']))
+        y += 74
+    for job in jobs:
+        status = 'disabled' if not job.get('enabled', True) else (job.get('last_status') or 'scheduled')
+        streak = int(job.get('failure_streak') or 0)
+        attention = status in {'error', 'failed', 'preview'} or streak > 0
+        status_names = {
+            'ok': '正常', 'success': '正常', 'error': '失败', 'failed': '失败',
+            'disabled': '已暂停', 'preview': '预览', 'scheduled': '待运行', 'skipped': '已跳过',
+        }
+        status_label = status_names.get(status, status[:16])
+        if streak:
+            status_label += f' ×{streak}'
+        expression = job.get('schedule_display') or job.get('schedule', {}).get('expr', '') or '未设置'
+        target = job_target_page(job)
+        confidence = (job.get('target') or {}).get('confidence') if isinstance(job.get('target'), dict) else None
+        target_label = f'页面 {target}' if target else '待确认'
+        if target and confidence != 'explicit':
+            target_label += ' ?'
+        out.append(svg_rect(pad, y, content_width, 60, fill=COLOR['bg'], stroke=COLOR['border'], rx=4))
+        out.append(svg_rect(pad, y, 3, 60, fill=COLOR['red'] if attention else COLOR['strong'], stroke='none', rx=1))
+        out.append(svg_text(job_display_name(job), pad + 18, y + 27, 13, fill=COLOR['text'], weight='bold'))
+        out.append(svg_text(str(job.get('id') or '')[:8], pad + 18, y + 45, 9, fill=COLOR['muted']))
+        out.append(svg_text(expression[:32], pad + 420, y + 35, 12, fill=COLOR['text_2']))
+        out.append(svg_text(target_label, pad + 650, y + 35, 12, fill=COLOR['text_2']))
+        out.append(svg_text(status_label, pad + 816, y + 35, 12,
+                            fill=COLOR['red'] if attention else COLOR['text'], weight='bold'))
+        y += 70
+
+    # Compact 24-hour view. Every task shares one red visual language.
+    y += 12
+    out.append(svg_text('24 小时触发', pad, y, 17, fill=COLOR['text'], weight='bold', family='serif'))
+    y += 22
+    timeline_x = pad + 170
+    timeline_width = content_width - 190
+    if not screen_jobs:
+        out.append(svg_text('暂无可定位到页面的任务', pad, y + 24, 12, fill=COLOR['muted']))
+        y += 50
+    else:
+        for hour in (0, 6, 12, 18, 24):
+            x = timeline_x + timeline_width * hour / 24
+            out.append(svg_text(str(hour), x, y + 11, 9, anchor='middle', fill=COLOR['muted']))
+        y += 20
+        for job in screen_jobs:
+            row_y = y + 16
+            out.append(svg_text(job_display_name(job, limit=18), pad, row_y + 4, 10, fill=COLOR['text_2']))
+            out.append(svg_line(timeline_x, row_y, timeline_x + timeline_width, row_y, stroke=COLOR['border'], sw=1))
+            try:
+                cron = parse_cron(job.get('schedule_display') or job.get('schedule', {}).get('expr', ''))
+            except (TypeError, ValueError):
+                cron = None
+            if cron:
+                hours = cron['hours'] if cron['hours'] is not None else set(range(24))
+                minutes = cron['minutes'] if cron['minutes'] is not None else set(range(60))
+                points = [(hour, minute) for hour in sorted(hours) for minute in sorted(minutes)]
+                dense = len(points) > MAX_TIMELINE_POINTS_PER_JOB
+                if dense:
+                    stride = max(1, (len(points) + MAX_TIMELINE_POINTS_PER_JOB - 1) // MAX_TIMELINE_POINTS_PER_JOB)
+                    points = points[::stride][:MAX_TIMELINE_POINTS_PER_JOB]
+                for hour, minute in points:
+                    x = timeline_x + timeline_width * (hour + minute / 60) / 24
+                    out.append(f'<circle cx="{x}" cy="{row_y}" r="3" fill="{COLOR["red"]}"/>')
+                if dense:
+                    out.append(svg_text('高频', width - pad, row_y + 4, 9, anchor='end', fill=COLOR['muted']))
+            y += 30
+
+    # Risk summary replaces technical legends and device mockups.
     y += 18
-    for j in jobs:
-        jid = j['id']
-        is_dev = jid in color
-        c = color.get(jid, '#999')
-        expr = j.get('schedule_display') or j.get('schedule', {}).get('expr', '')
-        name = (j.get('name') or jid)[:34]
-        if is_dev:
-            name = jid[:8] + ' ' + name
-        status = j.get('last_status') or '—'
-        if not j.get('enabled', True):
-            status = 'disabled'
-        stcolor = {'ok': '#2fa06b', 'error': '#c0392b', 'skipped': '#b8860b', 'disabled': '#999'}.get(status, '#666')
-        last = (j.get('last_run_at') or '—')
-        if len(last) > 16:
-            last = last[5:16]
-        nxt = (j.get('next_run_at') or '—')
-        if len(nxt) > 16:
-            nxt = nxt[5:16]
-        buf.append(svg_rect(pad, y - 4, W - 2 * pad, 26, fill='#fff', stroke=c if is_dev else '#eee', sw=1))
-        buf.append(svg_rect(pad, y - 4, 3, 26, fill=c, stroke='none'))
-        buf.append(svg_text(html.escape(name), pad + 12, y + 12, 11, 'start', '#111'))
-        buf.append(svg_text(html.escape(expr), pad + 12, y + 24, 9, 'start', '#888'))
-        buf.append(svg_text(status, pad + 158, y + 12, 11, 'start', stcolor, 'bold'))
-        buf.append(svg_text(last, pad + 208, y + 12, 10, 'start', '#555'))
-        buf.append(svg_text(nxt, pad + 320, y + 12, 10, 'start', '#555'))
-        tgt = job_target_page(j)
-        tgtxt = f'page {tgt}' if tgt else ('external report' if j.get('deliver') == 'origin' else '—')
-        buf.append(svg_text(tgtxt, pad + 432, y + 12, 11, 'start', c if is_dev else '#666',
-                            'bold' if is_dev else 'normal'))
-        kind = 'shell 脚本' if j.get('no_agent') else ('Agent(' + (j.get('model') or '?').split('/')[-1] + ')')
-        buf.append(svg_text(kind, pad + 700, y + 12, 10, 'start', '#555'))
-        y += 32
+    out.append(svg_text('需要关注', pad, y, 17, fill=COLOR['text'], weight='bold', family='serif'))
+    y += 18
+    visible_warnings = warnings[:6]
+    if not visible_warnings:
+        out.append(svg_rect(pad, y, content_width, 48, fill=COLOR['surface'], stroke=COLOR['border'], rx=4))
+        out.append(svg_text('未发现需要关注的问题', pad + 18, y + 30, 12, fill=COLOR['text_2']))
+        y += 58
+    else:
+        out.append(svg_rect(pad, y, content_width, 16 + len(visible_warnings) * 28,
+                            fill=COLOR['surface'], stroke=COLOR['border'], rx=4))
+        for index, warning in enumerate(visible_warnings):
+            line_y = y + 27 + index * 28
+            out.append(f'<circle cx="{pad + 18}" cy="{line_y - 4}" r="3" fill="{COLOR["red"]}"/>')
+            out.append(svg_text(warning_label(warning), pad + 32, line_y, 11, fill=COLOR['text_2']))
+        if len(warnings) > len(visible_warnings):
+            out.append(svg_text(f'另有 {len(warnings) - len(visible_warnings)} 项', width - pad - 16, y + 27,
+                                10, anchor='end', fill=COLOR['muted']))
+        y += 30 + len(visible_warnings) * 28
 
-    # ---------- 2) 24h 调度条 ----------
-    y += 8
-    buf.append(svg_text('② 24 小时触发视图 —— 写屏任务在一天里的触发时点', pad, y, 14, 'start', '#111', 'bold'))
-    y += 8
-    barx, bary, barw, barh = pad + 120, y + 2, W - 2 * pad - 220, 46
-    buf.append(svg_rect(barx, bary, barw, barh, fill='#fafafa', stroke='#ddd', rx=3))
-    # 时间轴刻度
-    for h in range(0, 25, 2):
-        xx = barx + barw * h / 24
-        buf.append(svg_line(xx, bary, xx, bary + barh, stroke='#eee'))
-        buf.append(svg_text(f'{h}', xx, bary + barh + 12, 8, 'middle', '#999'))
-    # 画布任务活动窗口 7:00-22:30 淡蓝底
-    buf.append(svg_rect(barx + barw * 7 / 24, bary, barw * 15.5 / 24, barh, fill='#eef4fb', stroke='none'))
-    for j in dev_jobs:
-        c = color[j['id']]
-        cron = parse_cron(j.get('schedule_display') or j.get('schedule', {}).get('expr', ''))
-        ly = bary + 8 + (dev_jobs.index(j) * 16)
-        buf.append(svg_text(html.escape((j.get('name') or j['id'])[:14]), barx - 118, ly + 6, 9, 'end', c))
-        if not cron:
-            continue
-        hours = cron['hours'] if cron['hours'] is not None else set(range(24))
-        mins = cron['minutes'] if cron['minutes'] is not None else {0}
-        for h in sorted(hours):
-            for m in sorted(mins):
-                xx = barx + barw * (h + m / 60) / 24
-                buf.append(f'<circle cx="{xx}" cy="{ly}" r="3" fill="{c}"/>')
-    y = bary + barh + 22
-
-    # ---------- 3) 屏幕页面面板 ----------
-    y += 8
-    buf.append(svg_text('③ 当前屏幕 —— 每页内容与驱动它的任务（同色）', pad, y, 14, 'start', '#111', 'bold'))
-    y += 8
-    gw = 300  # 每格宽
-    gx, gy = pad, y
-    for p in pages:
-        pn = p.get('page')
-        name = p.get('name') or f'page {pn}'
-        owner = None
-        for j in dev_jobs:
-            if job_target_page(j) == pn:
-                owner = color[j['id']]
-                break
-        c = owner or ('#999' if p.get('builtin') else '#666')
-        elems = device['elements'].get(pn, []) if pn in device['elements'] else []
-        buf.extend(page_mockup(pn, name, elems, gx, gy, s=0.52, title_color=c))
-        # 页名横幅
-        buf.append(svg_rect(gx, gy + 128 * 0.52 + 2, 296 * 0.52, 16, fill=c, stroke='none', rx=2))
-        extra = ''
-        dyn = [e for e in elems if e.get('dtype')]
-        if dyn:
-            extra = ' ⚡' + '+'.join(sorted(set(e['dtype'] for e in dyn)))
-        buf.append(svg_text(f'p{pn} {html.escape(name)}{extra}', gx + 4, gy + 128 * 0.52 + 13, 9, 'start', '#fff', 'bold'))
-        gx += gw
-        if gx + gw > W - pad:
-            gx = pad
-            gy += 128 * 0.52 + 42
-    y = gy + 128 * 0.52 + 44
-
-    # ---------- 4) 最近活动 ----------
-    y += 6
-    buf.append(svg_text('④ 最近画布刷新（history.jsonl）—— 每 30 分钟一屏（截图前 16 字）', pad, y, 14, 'start', '#111', 'bold'))
-    y += 8
-    kw = (W - 2 * pad) / 4
-    recent = history[-16:]
-    for i, h in enumerate(recent):
-        cx = pad + (i % 4) * (kw + 4)
-        cy = y + (i // 4) * 40
-        buf.append(svg_rect(cx, cy, kw, 32, fill='#fbfbfb', stroke='#e5e5e5', rx=3))
-        buf.append(svg_text(h['ts'][11:16], cx + 6, cy + 11, 8, 'start', '#999'))
-        buf.append(svg_text(f"{h.get('intent','')} · {h.get('layout','')}", cx + 6, cy + 22, 8, 'start', '#666'))
-        txt = h.get('text', '')
-        if '（' in txt:
-            txt = txt.split('（')[0]
-        buf.append(svg_text(html.escape(txt[:15]), cx + 6, cy + 32, 8, 'start', '#333'))
-    y += ((len(recent) - 1) // 4 + 1) * 40 + 8
-
-    # ---------- 图例 ----------
-    if dev_jobs:
-        buf.append(svg_text('图例（颜色 = 写屏任务）', pad, y, 11, 'start', '#666', 'bold'))
-        y += 12
-        lx = pad
-        for j in dev_jobs:
-            c = color[j['id']]
-            tgt = job_target_page(j)
-            buf.append(svg_rect(lx, y - 8, 10, 10, fill=c, stroke='none', rx=2))
-            buf.append(svg_text(f'{j["id"][:8]} → page {tgt}', lx + 14, y, 10, 'start', '#444'))
-            lx += 150
-
-    height = max(y + 30, 700)
+    out.append(svg_line(pad, y + 8, width - pad, y + 8, stroke=COLOR['border']))
+    out.append(svg_text('Litsea · XiaoZhi', pad, y + 30, 10, fill=COLOR['muted']))
+    out.append(svg_text('黑白为信息，红色为行动提示', width - pad, y + 30, 10, anchor='end', fill=COLOR['muted']))
+    height = max(520, y + 52)
     svg = ['<?xml version="1.0" encoding="UTF-8"?>']
-    svg.append(f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{height}" viewBox="0 0 {W} {height}">')
-    svg.extend(buf)
+    svg.append(
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">'
+    )
+    svg.append('<title id="title">小智定时任务总览</title>')
+    svg.append('<desc id="desc">显示任务、触发时间、目标页面、运行状态和风险。</desc>')
+    svg.extend(out)
     svg.append('</svg>')
     return '\n'.join(svg)
 
 
-def main():
+def load_history(path):
+    history = []
+    if not os.path.exists(path):
+        return history
+    if os.path.islink(path) or not os.path.isfile(path):
+        raise ValueError('history input must be a regular non-symlink file')
+    if os.path.getsize(path) > MAX_INPUT_BYTES:
+        raise ValueError(f'history file exceeds {MAX_INPUT_BYTES} bytes')
+    with open(path, encoding='utf-8') as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(item, dict) and isinstance(item.get('ts'), str):
+                history.append(item)
+    return history
+
+
+def discover_one_device():
+    import xiaozhi_discovery as discovery
+
+    networks = discovery.local_networks()
+    if not networks:
+        return None
+    found = discovery.discover(networks, all_devices=False)
+    return next(iter(found), None)
+
+
+def collect_device(ip, strict=False):
+    device = {'online': False, 'partial': False, 'ip': ip, 'name': '', 'version': '', 'pages': [], 'elements': {}}
+    if not ip:
+        return device
+    try:
+        client = DeviceClient(ip)
+        health = client.health()
+        device.update({'online': True, 'name': health.get('name', ''), 'version': health.get('version', '')})
+        network = call_device(client, 'device.network.info', {})
+        if isinstance(network, dict):
+            device['ip'] = network.get('ip') or ip
+    except BuildError:
+        if strict:
+            raise
+    return device
+
+
+def main(argv=None):
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
-    ap = argparse.ArgumentParser(description='生成小智定时任务 × 屏幕总览图 (SVG)')
+    default_svg = os.path.expanduser(
+        os.environ.get('XIAOZHI_WORKFLOW_SVG', '~/.hermes/xiaozhi_canvas/workflow-map.svg')
+    )
+    ap = argparse.ArgumentParser(description='生成 Litsea 风格的小智定时任务总览图 (SVG + JSON)')
     ap.add_argument('--jobs', default=os.path.expanduser('~/.hermes/cron/jobs.json'))
     ap.add_argument('--history', default=os.path.expanduser('~/.hermes/xiaozhi_canvas/history.jsonl'))
-    ap.add_argument('--ip', default=None, help='设备 IP；缺省则不连设备、不画页面')
-    ap.add_argument('--out', default='workflow_map.svg')
-    args = ap.parse_args()
+    ap.add_argument('--executions', default=os.path.expanduser('~/.hermes/cron/executions.db'))
+    ap.add_argument('--ip', default=None, help='设备 IP；用于显示连接状态，SVG 不绘制屏幕内容')
+    ap.add_argument('--discover', action='store_true', help='自动发现一台局域网小智设备')
+    ap.add_argument('--strict-device', action='store_true', help='设备不可达时失败，而不是生成离线快照')
+    ap.add_argument('--include-all-jobs', action='store_true', help='包含非 xiaozhi 定时任务')
+    ap.add_argument('--preview-name', help='只预览、不创建：候选任务名称')
+    ap.add_argument('--preview-schedule', help='只预览、不创建：5 段 cron 表达式')
+    ap.add_argument('--preview-page', type=int, help='只预览、不创建：目标页 6-15')
+    ap.add_argument('--preview-mode', default='canvas-refresh', help='预览任务模式（小写字母/数字/连字符）')
+    ap.add_argument('--out', default=default_svg)
+    ap.add_argument('--json-out', default=None, help='快照 JSON 路径；默认与 SVG 同名')
+    args = ap.parse_args(argv)
 
     jobs_data = load_json(args.jobs) if os.path.exists(args.jobs) else {}
-    jobs = jobs_data.get('jobs', []) if isinstance(jobs_data, dict) else []
-    if not isinstance(jobs, list):
-        raise ValueError('jobs input must contain a jobs array')
-    normalized_jobs = []
-    for index, job in enumerate(jobs[:1000]):
-        if not isinstance(job, dict):
-            continue
-        item = dict(job)
-        item['id'] = str(item.get('id') or f'job-{index}')[:128]
-        item['name'] = str(item.get('name') or item['id'])[:256]
-        if not isinstance(item.get('schedule'), dict):
-            item['schedule'] = {}
-        item['schedule']['expr'] = str(item['schedule'].get('expr', ''))[:256]
-        item['schedule_display'] = str(item.get('schedule_display', ''))[:256]
-        normalized_jobs.append(item)
-    jobs = normalized_jobs
-
-    history = []
-    if os.path.exists(args.history):
-        if os.path.getsize(args.history) > MAX_INPUT_BYTES:
-            raise ValueError(f'history file exceeds {MAX_INPUT_BYTES} bytes')
-        with open(args.history, encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    item = json.loads(line)
-                    if isinstance(item, dict) and isinstance(item.get('ts'), str):
-                        for key in ('intent', 'layout', 'text'):
-                            item[key] = str(item.get(key, ''))[:2048]
-                        history.append(item)
-                except ValueError:
-                    pass
-
-    device = {'ip': args.ip, 'name': '', 'version': '', 'pages': [], 'elements': {}}
-    if args.ip:
-        client = DeviceClient(args.ip)
-        hh = client.health()
-        device['name'] = hh.get('name', '')
-        device['version'] = hh.get('version', '')
-        h = call_device(client, 'device.network.info', {})
-        if h:
-            device['ip'] = h.get('ip') or args.ip
-        pages = fetch_pages(client)
-        device['pages'] = pages
-        for p in pages:
-            pn = p.get('page')
-            device['elements'][pn] = fetch_elements(client, pn)
-
-    svg = build(jobs, history, device)
-    with open(args.out, 'w', encoding='utf-8') as f:
-        f.write(svg)
-    print(f'[OK] 已生成 {args.out}  (cron {len(jobs)} 个 / 写屏 {sum(1 for j in jobs if job_target_page(j))} 个 / 页面 {len(device["pages"])} 个 / 历史 {len(history)} 屏)')
+    raw_jobs = list(jobs_data.get('jobs', [])) if isinstance(jobs_data, dict) else []
+    preview_requested = any((args.preview_name, args.preview_schedule, args.preview_page is not None))
+    if preview_requested:
+        if not args.preview_name or not args.preview_schedule or args.preview_page is None:
+            raise ValueError('--preview-name、--preview-schedule、--preview-page 必须一起提供')
+        if not 6 <= args.preview_page <= 15:
+            raise ValueError('--preview-page 必须在 6-15 之间')
+        if not re.fullmatch(r'[a-z][a-z0-9-]{0,31}', args.preview_mode):
+            raise ValueError('--preview-mode 格式无效')
+        if parse_cron(args.preview_schedule) is None:
+            raise ValueError('--preview-schedule 必须是有效的 5 段 cron 表达式')
+        raw_jobs.append({
+            'id': 'preview',
+            'name': f'{args.preview_name[:200]}（预览，尚未创建）',
+            'prompt': (
+                f'[XIAOZHI_CRON_META v1 page={args.preview_page} mode={args.preview_mode}]\n'
+                'preview only'
+            ),
+            'schedule': {'kind': 'cron', 'expr': args.preview_schedule},
+            'enabled': True,
+            'state': 'preview',
+            'last_status': 'preview',
+            'skills': ['xiaozhi-control'],
+        })
+    history = load_history(args.history)
+    ip = args.ip
+    if args.discover and not ip:
+        ip = discover_one_device()
+        if not ip and args.strict_device:
+            raise BuildError('no xiaozhi device discovered')
+    device = collect_device(ip, strict=args.strict_device)
+    snapshot = build_snapshot(
+        raw_jobs,
+        history,
+        device,
+        executions_path=args.executions,
+        include_all=args.include_all_jobs,
+    )
+    for job in snapshot['jobs']:
+        expression = job.get('schedule_display') or job.get('schedule', {}).get('expr', '')
+        try:
+            valid_schedule = parse_cron(expression) is not None
+        except (TypeError, ValueError):
+            valid_schedule = False
+        if not valid_schedule:
+            snapshot['warnings'].append({'code': 'invalid_schedule', 'job_id': job['id']})
+    svg = build(
+        snapshot['jobs'],
+        snapshot['history'],
+        snapshot['device'],
+        generated_at=snapshot['generated_at'],
+        warnings=snapshot['warnings'],
+    )
+    svg_path = atomic_write_text(args.out, svg)
+    json_path = args.json_out or os.path.splitext(svg_path)[0] + '.json'
+    json_path = atomic_write_text(json_path, json.dumps(snapshot, ensure_ascii=False, indent=2) + '\n')
+    print(
+        f'[OK] 已生成 {svg_path}  (xiaozhi cron {len(snapshot["jobs"])} 个 / '
+        f'写屏 {sum(1 for job in snapshot["jobs"] if job_target_page(job))} 个 / '
+        f'页面 {len(snapshot["device"]["pages"])} 个 / 历史 {len(snapshot["history"])} 屏)'
+    )
+    print(f'ARTIFACT_SVG={svg_path}')
+    print(f'ARTIFACT_JSON={json_path}')
+    return 0
 
 
 if __name__ == '__main__':
