@@ -179,7 +179,7 @@ Elements（固件 2.0.7，legacy 名与聚合名均可 — 全部 refresh=false�
 | id | type | params |
 |----|------|--------|
 | title | text | "有顶天家族" x=16 y=10 font_size=12 |
-| div | line | x1=16 y1=26 x2=180 y2=26 width=1 (x/y 传 0) |
+| div | hline | x1=16 x2=180 y=26 width=1 |
 | cat | image | name=cat x=24 y=44 w=24 h=24 |
 | t1 | text | "这是傻瓜的" x=58 y=46 font_size=16 |
 | t2 | text | "血脉使然啊。" x=58 y=68 font_size=16 |
@@ -200,7 +200,7 @@ curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" \
   -d '{"tool":"fridge.canvas.clear","args":{}}' >/dev/null
 for cmd in \
   '{"tool":"fridge.canvas.add_text","args":{"id":"title","text":"有顶天家族","x":16,"y":10,"font_size":12,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_line","args":{"id":"div","x":0,"y":0,"x1":16,"y1":26,"x2":180,"y2":26,"width":1,"refresh":false}}' \
+  '{"tool":"fridge.canvas.add_line","args":{"id":"div","x1":16,"y1":26,"x2":180,"y2":26,"width":1,"refresh":false}}' \
   '{"tool":"fridge.canvas.add_image","args":{"id":"cat","name":"cat","x":24,"y":44,"w":24,"h":24,"refresh":false}}' \
   '{"tool":"fridge.canvas.add_text","args":{"id":"t1","text":"这是傻瓜的","x":58,"y":46,"font_size":16,"refresh":false}}' \
   '{"tool":"fridge.canvas.add_text","args":{"id":"t2","text":"血脉使然啊。","x":58,"y":68,"font_size":16,"refresh":false}}' \

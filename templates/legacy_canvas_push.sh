@@ -22,7 +22,7 @@
 # Example (from page-templates.md §8 小海报+角落禅绕画):
 #   cat > /tmp/layout.jsonl << 'EOF'
 #   {"tool":"fridge.canvas.add_text","args":{"id":"title","text":"有顶天家族","x":16,"y":10,"font_size":12,"refresh":false}}
-#   {"tool":"fridge.canvas.add_line","args":{"id":"div","x":0,"y":0,"x1":16,"y1":26,"x2":180,"y2":26,"width":1,"refresh":false}}
+#   {"tool":"fridge.canvas.add_line","args":{"id":"div","x1":16,"y1":26,"x2":180,"y2":26,"width":1,"refresh":false}}
 #   {"tool":"fridge.canvas.add_image","args":{"id":"cat","name":"cat","x":24,"y":44,"w":24,"h":24,"refresh":false}}
 #   {"tool":"fridge.canvas.add_text","args":{"id":"t1","text":"这是傻瓜的","x":58,"y":46,"font_size":16,"refresh":false}}
 #   {"tool":"fridge.canvas.add_text","args":{"id":"t2","text":"血脉使然啊。","x":58,"y":68,"font_size":16,"refresh":false}}

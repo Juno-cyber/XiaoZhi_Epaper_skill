@@ -66,7 +66,7 @@ class LayoutTests(unittest.TestCase):
         builder.build_page(
             client,
             7,
-            "clear\nline id=sep x1=0 y1=10 x2=295 y2=10 width=1\nrefresh",
+            "clear\nhline id=sep x1=17 x2=280 y=10 width=1\nrefresh",
             output=lambda _: None,
         )
         self.assertEqual(client.calls[0], ("fridge.page.control", {"action": "list"}))
@@ -76,8 +76,10 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(tool, "fridge.page.element.control")
         self.assertEqual(args["action"], "add")
         self.assertEqual(args["type"], "line")
-        self.assertEqual((args["x"], args["y"]), (0, 0))
-        self.assertEqual(client.calls[4], ("fridge.pagemanager", {"target_page": 7}))
+        self.assertEqual((args["x"], args["y"]), (17, 10))
+        self.assertEqual((args["x1"], args["y1"], args["x2"], args["y2"]), (17, 10, 280, 10))
+        self.assertEqual(client.calls[4], ("fridge.page.element.control", {"action": "list", "page": 7}))
+        self.assertEqual(client.calls[5], ("fridge.pagemanager", {"target_page": 7}))
 
     def test_missing_custom_page_is_detected_before_clear(self):
         client = FakeClient(pages=[])
@@ -96,6 +98,64 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(client.calls[0][0], "fridge.canvas.control")
         self.assertEqual(client.calls[0][1]["action"], "add_text")
         self.assertEqual(client.calls[1], ("fridge.canvas.control", {"action": "refresh"}))
+
+    def test_hline_expands_to_equal_nonzero_y_endpoints_and_is_verified(self):
+        client = FakeClient()
+        builder.build_page(
+            client,
+            6,
+            "hline id=sep x1=12 x2=284 y=63 width=2\nrefresh",
+            output=lambda _: None,
+        )
+        tool, args = client.calls[0]
+        self.assertEqual(tool, "fridge.canvas.control")
+        self.assertEqual(
+            {key: args[key] for key in ("x1", "y1", "x2", "y2")},
+            {"x1": 12, "y1": 63, "x2": 284, "y2": 63},
+        )
+        self.assertEqual(client.calls[1], ("fridge.canvas.control", {"action": "list"}))
+        self.assertEqual(client.calls[2], ("fridge.canvas.control", {"action": "refresh"}))
+
+    def test_line_geometry_mismatch_fails_before_refresh(self):
+        class WrongStartClient(FakeClient):
+            def call(self, tool, args):
+                result = super().call(tool, args)
+                if args.get("action") in ("add", "add_line") and args.get("id") == "sep":
+                    self.elements[-1]["x1"] = 0
+                    self.elements[-1]["y1"] = 0
+                return result
+
+        client = WrongStartClient()
+        with self.assertRaisesRegex(builder.BuildError, "geometry mismatch"):
+            builder.build_page(
+                client,
+                6,
+                "hline id=sep x1=12 x2=284 y=63\nrefresh",
+                output=lambda _: None,
+            )
+        self.assertNotIn(("fridge.canvas.control", {"action": "refresh"}), client.calls)
+
+    def test_line_geometry_mismatch_after_clear_rolls_back_before_refresh(self):
+        class WrongStartClient(FakeClient):
+            def call(self, tool, args):
+                result = super().call(tool, args)
+                if args.get("action") in ("add", "add_line") and args.get("id") == "new":
+                    self.elements[-1]["x1"] = 0
+                    self.elements[-1]["y1"] = 0
+                return result
+
+        client = WrongStartClient()
+        original = {"type": "line", "id": "old", "x1": 5, "y1": 20, "x2": 290, "y2": 20, "width": 1}
+        client.elements = [dict(original)]
+        with self.assertRaisesRegex(builder.BuildError, "geometry mismatch"):
+            builder.build_page(
+                client,
+                6,
+                "clear\nhline id=new x1=12 x2=284 y=63\nrefresh",
+                output=lambda _: None,
+            )
+        self.assertEqual(client.elements, [original])
+        self.assertNotIn(("fridge.canvas.control", {"action": "refresh"}), client.calls)
 
     def test_full_preflight_prevents_partial_clear(self):
         client = FakeClient()
@@ -139,6 +199,10 @@ class LayoutTests(unittest.TestCase):
             "text id=t text=x x=-1 y=0",
             "rect id=r x=290 y=0 w=7 h=1",
             "line id=l x1=0 y1=0 x2=296 y2=0",
+            "line id=l x1=1 y1=1 x2=1 y2=1",
+            "line id=l x=0 y=8 x1=4 y1=8 x2=20 y2=8",
+            "line id=l x=4 y=0 x1=4 y1=8 x2=20 y2=8",
+            "hline id=l x1=1 x2=2 y=3 y1=3",
             "text id=t text=x x=0 y=0 typo=1",
             "text id=t text=x x=0 y=0 id=t2",
             "text id=t text=居中 x=148 y=0 align=center",
@@ -225,6 +289,7 @@ class LayoutTests(unittest.TestCase):
 
 class MockDeviceHandler(BaseHTTPRequestHandler):
     requests = []
+    elements = []
     fail = False
 
     def do_GET(self):
@@ -239,14 +304,23 @@ class MockDeviceHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         payload = json.loads(self.rfile.read(length))
         type(self).requests.append(payload)
-        inner = (
-            [{"page": 7, "name": "Test", "builtin": False}]
-            if payload.get("tool") == "fridge.page.control" and payload.get("args", {}).get("action") == "list"
-            else []
-            if payload.get("tool") in ("fridge.canvas.control", "fridge.page.element.control")
-            and payload.get("args", {}).get("action") == "list"
-            else {"status": "success"}
-        )
+        tool = payload.get("tool")
+        args = payload.get("args", {})
+        if tool == "fridge.page.control" and args.get("action") == "list":
+            inner = [{"page": 7, "name": "Test", "builtin": False}]
+        elif tool in ("fridge.canvas.control", "fridge.page.element.control") and args.get("action") == "list":
+            inner = [dict(item) for item in type(self).elements]
+        else:
+            if args.get("action") == "clear":
+                type(self).elements = []
+            elif args.get("action") == "add" or str(args.get("action", "")).startswith("add_"):
+                item = dict(args)
+                item["type"] = item.get("type") or item["action"].removeprefix("add_")
+                for key in ("action", "page", "refresh", "x", "y"):
+                    if item.get("type") == "line" or key not in ("x", "y"):
+                        item.pop(key, None)
+                type(self).elements.append(item)
+            inner = {"status": "success"}
         body = (
             {"error": "forced failure"}
             if type(self).fail
@@ -282,6 +356,7 @@ class HttpIntegrationTests(unittest.TestCase):
 
     def setUp(self):
         MockDeviceHandler.requests = []
+        MockDeviceHandler.elements = []
         MockDeviceHandler.fail = False
 
     def test_real_http_round_trip_and_error(self):

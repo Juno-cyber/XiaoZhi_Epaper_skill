@@ -22,13 +22,15 @@ Create and populate a page serially:
 ```json
 {"tool":"fridge.page.control","args":{"action":"create","name":"Weather"}}
 {"tool":"fridge.page.element.control","args":{"action":"add","page":7,"id":"title","type":"text","text":"Weather","x":10,"y":4,"font_size":16,"align":"center","refresh":false}}
-{"tool":"fridge.page.element.control","args":{"action":"add","page":7,"id":"sep","type":"line","x":0,"y":0,"x1":10,"y1":24,"x2":285,"y2":24,"width":1,"refresh":false}}
+{"tool":"fridge.page.element.control","args":{"action":"add","page":7,"id":"sep","type":"line","x":10,"y":24,"x1":10,"y1":24,"x2":285,"y2":24,"width":1,"refresh":false}}
 {"tool":"fridge.pagemanager","args":{"target_page":7}}
 ```
 
-Line elements must include compatibility fields `x=0,y=0` as well as their
-real coordinates. Add all elements with `refresh=false`, then switch/refresh
-once to reduce timeouts and e-paper wear.
+Line elements must include compatibility fields `x=x1,y=y1` as well as their
+real coordinates. Hard-coding compatibility fields to `(0,0)` is unsafe across
+firmware variants and makes malformed horizontal-line requests harder to spot.
+Add all elements with `refresh=false`, verify the stored endpoints, then
+switch/refresh once to reduce timeouts and e-paper wear.
 
 ## Geometry and Fonts
 

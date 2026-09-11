@@ -34,7 +34,7 @@ ITEM3_Q="$(shell_quote "$ITEM3")"
 python3 "$BUILDER" "$IP" "$PAGE" --port "$PORT" - <<EOF
 clear
 text id=title text="待办事项" x=8 y=2 font_size=12 align=left
-line id=sep x1=0 y1=18 x2=295 y2=18 width=1
+hline id=sep x1=0 x2=295 y=18 width=1
 rect id=box1 x=6 y=24 w=6 h=6 filled=false
 text id=item1 text=$ITEM1_Q x=20 y=24 font_size=12 align=left dynamic=true
 rect id=box2 x=6 y=42 w=6 h=6 filled=false

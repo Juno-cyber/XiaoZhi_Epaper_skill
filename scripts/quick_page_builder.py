@@ -363,8 +363,17 @@ def validate_element(command, args, line_number):
     elif command == "line":
         for key, high in (("x1", 295), ("x2", 295), ("y1", 127), ("y2", 127)):
             _integer_in(args, key, 0, high, line_number)
+        for key, endpoint, high in (("x", "x1", 295), ("y", "y1", 127)):
+            if key in args:
+                _integer_in(args, key, 0, high, line_number)
+                if args[key] != args[endpoint]:
+                    raise BuildError(
+                        f"line {line_number}: compatibility field {key} must equal {endpoint}"
+                    )
         if "width" in args:
             _integer_in(args, "width", 1, 16, line_number)
+        if args["x1"] == args["x2"] and args["y1"] == args["y2"]:
+            raise BuildError(f"line {line_number}: line endpoints must be different")
 
 
 def parse_layout(layout_text, page):
@@ -409,9 +418,16 @@ def parse_layout(layout_text, page):
             if len(commands) > MAX_COMMANDS:
                 raise BuildError(f"line {line_number}: layout exceeds {MAX_COMMANDS} commands")
             continue
-        if command not in ("text", "rect", "line", "image", "pixart"):
+        if command not in ("text", "rect", "line", "hline", "image", "pixart"):
             raise BuildError(f"line {line_number}: unknown command {command!r}")
         args = parse_kv(rest, line_number)
+        if command == "hline":
+            _require(args, {"id", "x1", "x2", "y"}, line_number)
+            _allow_only(args, {"id", "x1", "x2", "y", "width", "refresh"}, line_number)
+            horizontal_y = args.pop("y")
+            args["y1"] = horizontal_y
+            args["y2"] = horizontal_y
+            command = "line"
         if page >= 7 and command == "text" and "max_width" in args:
             raise BuildError(
                 f"line {line_number}: custom-page firmware ignores max_width; omit it (the region is fixed at 276px)"
@@ -500,9 +516,35 @@ def restore_page(client, page, snapshot):
         else:
             args.update({"action": "add", "page": page, "type": element_type})
             if element_type == "line":
-                args.setdefault("x", 0)
-                args.setdefault("y", 0)
+                args.setdefault("x", args["x1"])
+                args.setdefault("y", args["y1"])
             client.call("fridge.page.element.control", args)
+
+
+def verify_line_geometry(client, page, expected_lines):
+    """Confirm persisted line endpoints before an e-paper refresh."""
+    if not expected_lines:
+        return
+    if page == 6:
+        elements = client.call("fridge.canvas.control", {"action": "list"})
+    else:
+        elements = client.call("fridge.page.element.control", {"action": "list", "page": page})
+    if not isinstance(elements, list):
+        raise BuildError("cannot verify line geometry: element list is not an array")
+    actual = {
+        item.get("id"): item for item in elements
+        if isinstance(item, dict) and item.get("type") == "line"
+    }
+    for element_id, expected in expected_lines.items():
+        item = actual.get(element_id)
+        if item is None:
+            raise BuildError(f"line {element_id!r} missing during geometry verification")
+        stored = tuple(item.get(key) for key in ("x1", "y1", "x2", "y2"))
+        wanted = tuple(expected[key] for key in ("x1", "y1", "x2", "y2"))
+        if stored != wanted:
+            raise BuildError(
+                f"line {element_id!r} geometry mismatch: expected {wanted}, stored {stored}"
+            )
 
 
 def build_page(client, page, layout_text, delay=0.0, output=print):
@@ -518,8 +560,12 @@ def build_page(client, page, layout_text, delay=0.0, output=print):
     has_clear = any(command == "clear" for command, _, _ in commands)
     prepare_images(client, commands)
     snapshot = snapshot_page(client, page) if has_clear else None
+    expected_lines = {
+        args["id"]: args for command, args, _ in commands if command == "line"
+    }
     element_count = 0
     clear_attempted = False
+    lines_verified = False
 
     try:
         for command, source_args, line_number in commands:
@@ -531,8 +577,13 @@ def build_page(client, page, layout_text, delay=0.0, output=print):
                 clear_attempted = True
                 result = client.call(tool, args)
             elif command == "switch":
+                if source_args["target_page"] == page:
+                    verify_line_geometry(client, page, expected_lines)
+                    lines_verified = True
                 result = client.call("fridge.pagemanager", source_args)
             elif command == "refresh":
+                verify_line_geometry(client, page, expected_lines)
+                lines_verified = True
                 if is_canvas:
                     result = client.call("fridge.canvas.control", {"action": "refresh"})
                 else:
@@ -555,13 +606,15 @@ def build_page(client, page, layout_text, delay=0.0, output=print):
                     args["action"] = "add"
                     args["type"] = actual_type
                     if actual_type == "line":
-                        args.setdefault("x", 0)
-                        args.setdefault("y", 0)
+                        args.setdefault("x", args["x1"])
+                        args.setdefault("y", args["y1"])
                     result = client.call("fridge.page.element.control", args)
                 element_count += 1
             output(f"line {line_number}: {command} -> {result.get('status', 'ok') if isinstance(result, dict) else 'ok'}")
             if delay:
                 time.sleep(delay)
+        if not lines_verified:
+            verify_line_geometry(client, page, expected_lines)
     except Exception as exc:
         if clear_attempted:
             try:

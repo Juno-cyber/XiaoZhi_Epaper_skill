@@ -3,7 +3,7 @@ name: xiaozhi-control
 description: Discover, health-check, and control xiaozhi ESP32 devices on a trusted LAN over HTTP, including fridge data, e-paper pages, canvas layouts, images, and recipes. Use for local xiaozhi device operations; not for cloud/MQTT control.
 license: MIT
 metadata:
-  version: 2.3.1
+  version: 2.3.2
   author: Juno-cyber
   platforms: [linux, macos]
   prerequisites:
@@ -91,7 +91,7 @@ Canvas page 6 and custom pages have different contracts:
 {"tool":"fridge.page.element.control","args":{"action":"add","page":7,"id":"t1","type":"text","text":"Hello","x":8,"y":2,"font_size":16,"refresh":false}}
 ~~~
 
-For custom-page elements, use action=add plus type=text|rect|line|image; parameters are flat in args. Line elements should include x=0,y=0 for compatibility even though their visible coordinates are x1,y1,x2,y2.
+For custom-page elements, use action=add plus type=text|rect|line|image; parameters are flat in args. Line elements should include compatibility fields `x=x1,y=y1`; never hard-code them to `(0,0)`.
 
 ## Validated layout builder
 
@@ -107,12 +107,12 @@ Example layout:
 ~~~text
 clear
 text id=title text="Hello world" x=8 y=2 font_size=16 align=left
-line id=sep x1=0 y1=22 x2=295 y2=22 width=1
+hline id=sep x1=8 x2=287 y=22 width=1
 pixart id=heart art=heart x=260 y=2 w=24 h=24
 refresh
 ~~~
 
-Commands are clear, switch N, text, rect, line, image, pixart, and refresh. Quote values containing whitespace. The builder rejects malformed input, duplicate IDs, unknown parameters, off-screen geometry, unsupported pages, and layouts over 30 elements before contacting the device. Before a clear it requires a validated, restorable snapshot; if the rebuild then fails, it restores that snapshot without refreshing the panel. Any device or transport error produces a nonzero exit.
+Commands are clear, switch N, text, rect, line, hline, image, pixart, and refresh. Use `hline` for horizontal rules so one `y` value deterministically becomes both `y1` and `y2`; reserve `line` for intentional diagonal or vertical segments. Quote values containing whitespace. The builder rejects malformed input, duplicate IDs, unknown parameters, zero-length/off-screen geometry, unsupported pages, and layouts over 30 elements before contacting the device. It also reads line elements back and verifies their stored endpoints before the final refresh. Before a clear it requires a validated, restorable snapshot; if the rebuild then fails, it restores that snapshot without refreshing the panel. Any device or transport error produces a nonzero exit.
 
 Custom pages 7–15 use the same DSL; the builder converts element commands to action=add plus type.
 

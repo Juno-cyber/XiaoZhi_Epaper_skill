@@ -88,10 +88,10 @@ heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee
    - 若输出带 API 失败提示或无输出，换类别重试：`--cat i` → `--cat k` → `--source jinrishici` → `--source iciba`
    - 连续 3 源失败才允许素材池兜底
 4. 根据反重复规则选图标、版式（图标与版式可按主意图选）
-5. 先用 quick_page_builder.py 的 `--check` 对整份布局做离线校验；任何错误都应停止，不能清屏
-6. 通过 `fridge.canvas.control` action=clear 清除画布，refresh=false
-7. 通过 `fridge.canvas.control` 的 add_text / add_image / add_rect / add_line 逐个添加，全部 refresh=false；每个 text 的 `text` 字段直接填入第 3 步确定的文案（含脚注 source 原串），不得二次改动
-8. 最后调用 `fridge.canvas.control` action=refresh；逐条检查内外层错误，任何失败都以失败状态结束
+5. 生成完整 builder DSL，必须以 `clear` 开始、`refresh` 结束；水平分割线必须使用下述 `hline` 格式
+6. 先执行 `quick_page_builder.py "$IP" 6 <layout> --check` 对整份布局做离线校验；任何错误都应停止，不能清屏
+7. 校验通过后执行同一份 DSL。必须由 builder 串行 clear/add/回读校验/refresh，不得绕过 builder 自行调用 add_line；每个 text 的 `text` 字段直接填入第 3 步确定的文案（含脚注 source 原串），不得二次改动
+8. 逐条检查内外层错误；builder 会在刷新前回读线条端点，任一坐标不一致或请求失败都以失败状态结束
 9. 仅在刷新成功后追加历史到 `~/.hermes/xiaozhi_canvas/history.jsonl`（一行JSON：ts, slot, intent, layout, icons, text）
 10. 输出一句话摘要以供记录（如"刷新完成：陪伴·A版式·太阳图标"）
 
@@ -99,7 +99,7 @@ heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee
 - 安全区域: x∈[5,291], y∈[5,123]
 - 中文宽度: 16px at font=16, 12px at font=12
 - 每行中文16px最多18字，12px最多24字
-- 分割线: add_line with x1,y1,x2,y2,width
+- 水平分割线必须使用 builder DSL：`hline id=sep x1=16 x2=280 y=72 width=1`。`hline` 只接收一个 y 并生成相同的 y1/y2；不要用 x/y 代替 x1/y1，也不要把起点留给工具默认值
 - 字体只有2种: ≤12→12px, >12→16px
 - 一行最多两条独立 text 元素（不同 y）
 - 实践留白原则，不要信息过载

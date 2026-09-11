@@ -16,7 +16,7 @@ This file describes the current supported behavior. Superseded incident notes be
 
 8. **Page 6 differs from pages 7–15.** Canvas uses fridge.canvas.control with actions such as add_text. Custom pages use fridge.page.element.control with action=add and a separate type field.
 9. **Custom element parameters are flat.** page, id, type, coordinates, and content are siblings in args.
-10. **Line compatibility.** For custom pages include x=0,y=0 even though x1,y1,x2,y2 define the line.
+10. **Line endpoints and compatibility.** Always send all four real endpoints `x1,y1,x2,y2`. For custom pages mirror the start into compatibility fields `x=x1,y=y1`; never hard-code `(0,0)`. Use builder `hline` for horizontal rules so `y1=y2` is guaranteed, and verify stored endpoints before refreshing.
 11. **Preflight before clear.** Validate every command, required field, coordinate, ID, and element count before deleting the existing layout.
 12. **Batch refresh.** Clear/add with refresh=false and refresh once at the end. This reduces latency, flicker, and e-paper wear.
 13. **Canvas element limit.** Page 6 accepts at most 30 labels. Clear before replacing a whole composition; reuse stable IDs for updates.
