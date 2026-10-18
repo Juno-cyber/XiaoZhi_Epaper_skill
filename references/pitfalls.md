@@ -1,39 +1,82 @@
-# Current operational pitfalls
+# Troubleshooting: discovery, writes and panel refresh
 
-This file describes the current supported behavior. Superseded incident notes belong in Git history, not in Agent instructions.
+## Cannot find a powered-on device
 
-## Connection and API
+1. `python3 scripts/xiaozhi_discovery.py --json --save --verbose` validates cached
+   IPs first, then tries bounded mDNS, UDP and actual local subnets.
+2. Known IP: `--host IP --timeout 5`. This does not scan other addresses.
+   DHCP can reassign an old IP to another device; compare name/MAC/board.
+3. Unknown IP: use the confirmed Wi-Fi CIDR with `--subnet CIDR --scan-timeout 4`.
+   Default scan timeout is 2s (formerly 0.5s, which missed a real device).
+   An explicit subnet also bounds cache/mDNS candidates; inactive Linux interfaces
+   are skipped. `--workers 8` reduces network pressure. All requests to one host remain serial.
+4. Check same LAN, Wi-Fi connection, power, guest/AP isolation and VPN routing.
+   A powered e-paper panel can retain its picture while its controller is offline.
+   If interface detection fails, `--host` and `--subnet` still work.
+5. mDNS is optional. Linux can use Avahi; macOS can use `dns-sd`; native Windows
+   interface detection uses PowerShell JSON. Neither a missing mDNS tool nor a
+   blocked broadcast should prevent an explicit IP probe.
 
-1. **Verify identity before mutation.** GET / must return status=ok and the expected board/device information. A stale cached IP may now belong to another host.
-2. **No authentication or encryption.** LocalControl is trusted-LAN only. Do not port-forward it, publish it through a public reverse proxy, or use it on an untrusted Wi-Fi network.
-3. **HTTP 200 does not mean tool success.** Inspect outer error, result.isError, and the JSON/string inside result.content.
-4. **Do not mix endpoint formats.** /api/call uses tool/args; /mcp uses MCP JSON-RPC.
-5. **Requests are serial.** Avoid concurrent calls. A timeout after a mutation is ambiguous; inspect state before deciding whether to retry.
-6. **Diagnose reachability first.** If GET / fails, investigate power/Wi-Fi/address changes. If GET works but browser POST fails, inspect CORS/OPTIONS or the local proxy.
-7. **Firmware versions differ.** Firmware 2.0.7 exposes aggregate tools and maps legacy names at /api/call. Firmware 2.0.5 may require legacy names. Query health/version instead of guessing.
+Cache only supplies candidates. `--all --json` enumerates devices; select by
+identity. Do not write to the first device just because several share a board.
+The default discovery call stops after finding one; it is not an inventory.
 
-## Pages and rendering
+## An update seems to refresh twice
 
-8. **Page 6 differs from pages 7–15.** Canvas uses fridge.canvas.control with actions such as add_text. Custom pages use fridge.page.element.control with action=add and a separate type field.
-9. **Custom element parameters are flat.** page, id, type, coordinates, and content are siblings in args.
-10. **Line endpoints and compatibility.** Always send all four real endpoints `x1,y1,x2,y2`. For custom pages mirror the start into compatibility fields `x=x1,y=y1`; never hard-code `(0,0)`. Use builder `hline` for horizontal rules so `y1=y2` is guaranteed, and verify stored endpoints before refreshing.
-11. **Preflight before clear.** Validate every command, required field, coordinate, ID, and element count before deleting the existing layout.
-12. **Batch refresh.** Clear/add with refresh=false and refresh once at the end. This reduces latency, flicker, and e-paper wear.
-13. **Canvas element limit.** Page 6 accepts at most 30 labels. Clear before replacing a whole composition; reuse stable IDs for updates.
-14. **Text width is approximate.** Chinese glyphs are roughly 12px or 16px. English and punctuation vary; verify important layouts on the physical display.
-15. **Alignment semantics differ from HTML Canvas.** For center and right alignment, x is the region's left edge. Page 6 uses x+max_width; custom pages fix the width at 276px and ignore max_width.
-16. **Font repertoire is limited.** Use ASCII - instead of ·, ・, or —. Test unusual Unicode against the device font.
-17. **Images are raw bitmaps.** Use row-padded 1-bpp MSB-first data of ceil(width/8) × height bytes. URL-encode and restrict image names; never treat them as filesystem paths.
+First distinguish **two display requests** from the **multi-phase waveform of
+one full refresh**. The firmware's async queue coalesces some nearby frames,
+but this is not a guarantee that redundant requests will collapse.
 
-## Persistence and browser console
+- `fridge.pagemanager` always requests full refresh, even on the same page.
+  `canvas.refresh` and add/update/clear with `refresh:true` also present.
+- Use clear/add with explicit `refresh:false`, read back, then **one** final
+  `fridge.pagemanager`. Do not switch before writing. The builder defers old
+  `switch N` commands and merges them with final `refresh`.
+- Canvas `reorder` refreshes regardless of its refresh flag (custom-page reorder
+  does not). Prefer adding
+  in desired z order. A create/list/readback operation is not a reason to refresh.
+- A clock/date tick, voice state transition, a different web/Agent writer, or
+  the home-return timer can independently produce a later frame. Check
+  `python3 scripts/xiaozhi.py IP home`; do not silently disable user settings.
+- `GET /api/home_page` reports the configured home, not current page. A return
+  to that page after the configured idle timeout is expected, not a lost write.
 
-18. **Persistence needs explicit verification.** After create/add/update, power-cycle and list the page. A successful in-memory render does not prove the layout was saved.
-19. **Direct browser access needs OPTIONS and CORS headers on every endpoint.** A same-origin local proxy is usually more reliable.
-20. **Keep the development proxy local.** Bind to loopback by default, cap request/response sizes, allow only known device paths, and use a threaded server so one stalled device call does not freeze static assets.
+For evidence, observe the physical panel or capture a bounded serial log and
+count `Refresh full frame=…` / `Refresh partial frame=…` entries with page and
+sequence. `Queued frame` is not necessarily displayed. `writeImageAgain` updates
+panel controller RAM after a refresh; it is not a second `panel.refresh` call.
+A single successful HTTP response cannot establish physical completion.
 
-## Firmware debugging
+The skill can eliminate duplicate requests it sends. Strict atomic batches,
+refresh-completion telemetry and a same-page partial-refresh API would require
+firmware changes; do not claim they exist in 2.5.2.1.
 
-21. **Tool registration is bounded.** The cloud/MQTT service may reject devices that expose too many MCP tools. Prefer aggregate tools and confirm tools/list pagination.
-22. **CORS handlers count toward ESP HTTP handler limits.** Check every registration return value and size max_uri_handlers for all GET, POST, and OPTIONS handlers.
-23. **Early application states may precede audio initialization.** Do not call audio-service methods before initialization; use a captured backtrace and addr2line for crash loops.
-24. **Build/flash tools may need an interactive serial environment.** Use the documented ESP-IDF environment, correct baud rate, and a bounded serial capture. See firmware-development.md.
+## Failed / partial writes
+
+- Inspect outer errors, MCP `isError`, and inner result. HTTP 200 is insufficient.
+- Client default is 20s; firmware's MCP wait is 15s. Keep tool JSON under 4096
+  bytes. If a response times out, read elements before deciding to retry.
+- Builder validates the entire input and restorable snapshot before clear;
+  images must exist and match raw size. `--backup before.json` saves the old
+  element state on the host. Known pre-presentation failures restore it without
+  refreshing. Transport/timeout failures stop without automatic rollback.
+- Recovery: list current elements, compare with the intended layout and backup,
+  then deliberately finish or rebuild from the backup. The backup JSON contains
+  `page` and `elements`; use add commands with the saved type/fields and one final
+  show. For dynamic text translate `dynamic_type`/`dtype` as appropriate.
+- The multi-request batch is not atomic. Other writers or dynamic labels on the
+  active page may expose intermediate changes. Avoid concurrent editors.
+- Readback verifies content/geometry, not exact font appearance or disk durability.
+  Reboot verification is a separate test; do not power-cycle for an ordinary edit.
+
+## Wrong-looking output
+
+- Use the MCP element list for mutation coordinates. `/api/page_layout` uses
+  internal render coordinates and is not a directly replayable backup.
+- Lines require all four endpoints; custom pages mirror the start into `x,y`.
+  `hline` avoids accidental diagonals. Builder verifies every written element.
+- Text widths are estimates; use 12/16px, leave margins, and avoid unsupported
+  punctuation. Custom pages ignore `max_width` and align within 276px.
+- Image bits: 1 black, 0 white, row-padded. Width/height never scales an asset.
+- For browser-only failures consult [web-console.md](web-console.md); do not
+  reflash firmware just because the browser blocks a local network request.

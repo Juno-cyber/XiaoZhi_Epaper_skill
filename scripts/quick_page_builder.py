@@ -27,12 +27,16 @@ MAX_ELEMENTS = 30
 MAX_COMMANDS = 64
 MAX_LAYOUT_BYTES = 256 * 1024
 MAX_RESPONSE_BYTES = 1024 * 1024
-DEFAULT_TIMEOUT = 8.0
+DEFAULT_TIMEOUT = 20.0  # Firmware can wait 15 seconds for a queued MCP result.
 VALID_HOST_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:_[]")
 
 
 class BuildError(RuntimeError):
     """A validation, transport, or device error that must fail the build."""
+
+
+class AmbiguousMutationError(BuildError):
+    """The request may have executed: inspect state before another write."""
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -116,11 +120,13 @@ class DeviceClient:
     def _read_limited(response):
         raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:
-            raise BuildError("device response exceeds 1 MiB")
+            raise AmbiguousMutationError("device response exceeds 1 MiB; outcome unknown")
         return raw
 
     def call(self, tool, args):
-        payload = json.dumps({"tool": tool, "args": args}, ensure_ascii=False).encode("utf-8")
+        payload = json.dumps({"tool": tool, "args": args}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(payload) > 4095:
+            raise BuildError("tool request exceeds firmware's 4095-byte receive buffer")
         request = urllib.request.Request(
             self.base_url + "/api/call",
             data=payload,
@@ -131,12 +137,28 @@ class DeviceClient:
             with DEVICE_OPENER.open(request, timeout=self.timeout) as response:
                 raw = self._read_limited(response)
         except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as exc:
-            raise BuildError(f"device request failed: {exc}") from exc
+            raise AmbiguousMutationError(f"device request outcome unknown: {exc}; inspect state before retrying") from exc
 
         try:
             data = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise BuildError("device returned invalid JSON") from exc
+            raise AmbiguousMutationError("device returned invalid JSON; inspect state before retrying") from exc
+        return self._unwrap_response(data)
+
+    def http_json(self, path, body=None):
+        """Small direct HTTP configuration/preview endpoints, without retries."""
+        if path not in ("/api/home_page", "/api/device_name") and not (
+                path.startswith("/api/page_layout?page=") and path.split("=")[-1] in map(str, range(1, 16))):
+            raise BuildError("unsupported HTTP configuration/preview path")
+        payload = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+        request = urllib.request.Request(self.base_url + path, data=payload,
+                                         headers={"Content-Type": "application/json; charset=utf-8"})
+        try:
+            with DEVICE_OPENER.open(request, timeout=self.timeout) as response:
+                data = json.loads(self._read_limited(response).decode("utf-8"))
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as exc:
+            error = AmbiguousMutationError if body is not None else BuildError
+            raise error(f"HTTP request failed: {exc}") from exc
         return self._unwrap_response(data)
 
     def health(self):
@@ -153,11 +175,15 @@ class DeviceClient:
     @staticmethod
     def _unwrap_response(data):
         if not isinstance(data, dict):
-            raise BuildError("device returned a non-object response")
+            raise AmbiguousMutationError("device returned a non-object response")
         if data.get("error"):
+            if any(word in str(data["error"]).lower() for word in ("timeout", "cannot track response")):
+                raise AmbiguousMutationError(f"device error: {data['error']}; inspect state before retrying")
             raise BuildError(f"device error: {data['error']}")
 
         result = data.get("result")
+        if "result" in data and not isinstance(result, dict):
+            raise AmbiguousMutationError("device returned a malformed result")
         if isinstance(result, dict):
             if result.get("isError"):
                 content = result.get("content") or []
@@ -171,14 +197,17 @@ class DeviceClient:
                         found_text = True
                         value = item.get("text", "")
                         if not isinstance(value, str):
-                            raise BuildError("device tool returned a non-string text result")
+                            raise AmbiguousMutationError("device tool returned a non-string text result")
                         try:
                             data = json.loads(value)
                         except json.JSONDecodeError:
-                            raise BuildError(f"device tool returned non-JSON: {value[:200]}")
+                            raise AmbiguousMutationError(f"device tool returned non-JSON: {value[:200]}")
                         break
             if not found_text:
-                raise BuildError("device tool returned no text result")
+                raise AmbiguousMutationError("device tool returned no text result")
+
+        if not isinstance(data, (dict, list)):
+            raise AmbiguousMutationError("device tool returned neither an object nor an array")
 
         if isinstance(data, dict) and data.get("error"):
             raise BuildError(f"device error: {data['error']}")
@@ -246,7 +275,7 @@ def parse_kv(text, line_number=None):
         if not key or key in values:
             where = f"line {line_number}: " if line_number else ""
             raise BuildError(where + f"invalid or duplicate key {key!r}")
-        values[key] = parse_value(value)
+        values[key] = value if key in {"id", "text", "name", "art", "align", "dynamic_type"} else parse_value(value)
     return values
 
 
@@ -275,12 +304,13 @@ def estimate_text_width(text, font_size):
 
 
 def valid_image_name(name):
-    safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"
+    safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_."
     return (
         isinstance(name, str)
         and 0 < len(name) <= 64
         and not name.startswith(".")
         and ".." not in name
+        and not name.lower().endswith(".json")  # LittleFS page registry/layout files
         and all(char in safe for char in name)
     )
 
@@ -360,6 +390,8 @@ def validate_element(command, args, line_number):
                 raise BuildError(f"line {line_number}: image name must be a safe basename of at most 64 characters")
         if command == "pixart" and args["art"] not in ARTISTS:
             raise BuildError(f"line {line_number}: unknown pixel art {args['art']!r}")
+        if command == "pixart" and (width != 24 or height != 24):
+            raise BuildError(f"line {line_number}: built-in pixel art is 24x24; w/h do not scale bitmaps")
     elif command == "line":
         for key, high in (("x1", 295), ("x2", 295), ("y1", 127), ("y2", 127)):
             _integer_in(args, key, 0, high, line_number)
@@ -412,8 +444,8 @@ def parse_layout(layout_text, page):
                 target = int(rest.strip())
             except ValueError as exc:
                 raise BuildError(f"line {line_number}: switch requires a page number") from exc
-            if not 1 <= target <= 15:
-                raise BuildError(f"line {line_number}: switch page must be in [1, 15]")
+            if target != page:
+                raise BuildError(f"line {line_number}: switch must target the page being built ({page})")
             commands.append((command, {"target_page": target}, line_number))
             if len(commands) > MAX_COMMANDS:
                 raise BuildError(f"line {line_number}: layout exceeds {MAX_COMMANDS} commands")
@@ -448,6 +480,12 @@ def parse_layout(layout_text, page):
             raise BuildError(f"line {line_number}: layout exceeds {MAX_COMMANDS} commands")
     if not commands:
         raise BuildError("layout contains no commands")
+    # Legacy layouts may switch before clearing. Defer and coalesce all display
+    # requests so the old/empty/intermediate layout is never explicitly shown.
+    display_lines = [line for command, _, line in commands if command in ("switch", "refresh")]
+    commands = [item for item in commands if item[0] not in ("switch", "refresh")]
+    if display_lines:
+        commands.append(("refresh", {}, display_lines[-1]))
     return commands
 
 
@@ -457,15 +495,18 @@ def prepare_images(client, commands):
     if not image_commands:
         return
     files = client.list_images()
-    available = {item.get("name") for item in files if isinstance(item, dict) and isinstance(item.get("name"), str)}
+    available = {item.get("name"): item.get("size") for item in files if isinstance(item, dict) and isinstance(item.get("name"), str)}
     for command, args in image_commands:
         name = args["art"] if command == "pixart" else args["name"]
+        required_bytes = ((args.get("w", 24) + 7) // 8) * args.get("h", 24)
         if name in available:
+            if available[name] != required_bytes:
+                raise BuildError(f"image {name!r} size mismatch: expected {required_bytes} bytes, stored {available[name]}")
             continue
         if command == "image":
             raise BuildError(f"device image {name!r} does not exist; upload it before building")
         client.upload_image(name, to_bitmap(ARTISTS[name]()))
-        available.add(name)
+        available[name] = required_bytes
 
 
 RESTORE_FIELDS = {
@@ -521,33 +562,53 @@ def restore_page(client, page, snapshot):
             client.call("fridge.page.element.control", args)
 
 
-def verify_line_geometry(client, page, expected_lines):
-    """Confirm persisted line endpoints before an e-paper refresh."""
-    if not expected_lines:
+def verify_elements(client, page, commands, exact=False):
+    """Read back every written element before presenting, not just HTTP status."""
+    expected = []
+    for kind, source, _ in commands:
+        if kind in ("clear", "refresh", "switch"):
+            continue
+        args = dict(source)
+        args.pop("refresh", None)
+        if kind == "pixart":
+            kind = "image"
+            args["name"] = args.pop("art")
+            args.setdefault("w", 24)
+            args.setdefault("h", 24)
+        args["type"] = kind
+        if kind == "line":
+            args.pop("x", None)
+            args.pop("y", None)
+        # List responses expose dtype, not the legacy dynamic flag. Clock/date
+        # text is computed on device and changes independently of a write.
+        args.pop("dynamic", None)
+        if args.get("dynamic_type"):
+            args["dtype"] = args.pop("dynamic_type")
+            args.pop("text", None)
+        expected.append(args)
+    if not expected and not exact:
         return
     if page == 6:
         elements = client.call("fridge.canvas.control", {"action": "list"})
     else:
         elements = client.call("fridge.page.element.control", {"action": "list", "page": page})
     if not isinstance(elements, list):
-        raise BuildError("cannot verify line geometry: element list is not an array")
-    actual = {
-        item.get("id"): item for item in elements
-        if isinstance(item, dict) and item.get("type") == "line"
-    }
-    for element_id, expected in expected_lines.items():
+        raise BuildError("cannot verify elements: element list is not an array")
+    actual = {item.get("id"): item for item in elements if isinstance(item, dict)}
+    if exact and (set(actual) != {item["id"] for item in expected} or len(actual) != len(elements)):
+        raise BuildError("readback element IDs differ from the complete layout")
+    for wanted in expected:
+        element_id = wanted["id"]
         item = actual.get(element_id)
         if item is None:
-            raise BuildError(f"line {element_id!r} missing during geometry verification")
-        stored = tuple(item.get(key) for key in ("x1", "y1", "x2", "y2"))
-        wanted = tuple(expected[key] for key in ("x1", "y1", "x2", "y2"))
-        if stored != wanted:
-            raise BuildError(
-                f"line {element_id!r} geometry mismatch: expected {wanted}, stored {stored}"
-            )
+            raise BuildError(f"element {element_id!r} missing during verification")
+        for key, value in wanted.items():
+            if item.get(key) != value:
+                label = "geometry mismatch" if wanted["type"] == "line" else "readback mismatch"
+                raise BuildError(f"element {element_id!r} {label}: {key} expected {value!r}, stored {item.get(key)!r}")
 
 
-def build_page(client, page, layout_text, delay=0.0, output=print):
+def build_page(client, page, layout_text, delay=0.0, output=print, backup_path=None):
     """Validate the entire layout before applying any device mutation."""
     commands = parse_layout(layout_text, page)
     if page >= 7:
@@ -560,12 +621,18 @@ def build_page(client, page, layout_text, delay=0.0, output=print):
     has_clear = any(command == "clear" for command, _, _ in commands)
     prepare_images(client, commands)
     snapshot = snapshot_page(client, page) if has_clear else None
-    expected_lines = {
-        args["id"]: args for command, args, _ in commands if command == "line"
-    }
+    if has_clear and backup_path:
+        try:
+            with open(backup_path, "w", encoding="utf-8") as handle:
+                json.dump({"page": page, "elements": [dict(args, type=kind) for kind, args in snapshot]},
+                          handle, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            raise BuildError(f"cannot save backup; page was not cleared: {exc}") from exc
+        output(f"Backup: {backup_path}")
     element_count = 0
     clear_attempted = False
-    lines_verified = False
+    verified = False
+    presenting = False
 
     try:
         for command, source_args, line_number in commands:
@@ -576,18 +643,13 @@ def build_page(client, page, layout_text, delay=0.0, output=print):
                     args["page"] = page
                 clear_attempted = True
                 result = client.call(tool, args)
-            elif command == "switch":
-                if source_args["target_page"] == page:
-                    verify_line_geometry(client, page, expected_lines)
-                    lines_verified = True
-                result = client.call("fridge.pagemanager", source_args)
             elif command == "refresh":
-                verify_line_geometry(client, page, expected_lines)
-                lines_verified = True
-                if is_canvas:
-                    result = client.call("fridge.canvas.control", {"action": "refresh"})
-                else:
-                    result = client.call("fridge.pagemanager", {"target_page": page})
+                verify_elements(client, page, commands, exact=has_clear)
+                verified = True
+                presenting = True
+                # SetPage also resets the home-return timer; ShowCanvasPage
+                # (canvas.refresh) does not in firmware 2.5.2.1.
+                result = client.call("fridge.pagemanager", {"target_page": page})
             else:
                 args = dict(source_args)
                 args.setdefault("refresh", False)
@@ -613,10 +675,13 @@ def build_page(client, page, layout_text, delay=0.0, output=print):
             output(f"line {line_number}: {command} -> {result.get('status', 'ok') if isinstance(result, dict) else 'ok'}")
             if delay:
                 time.sleep(delay)
-        if not lines_verified:
-            verify_line_geometry(client, page, expected_lines)
+        if not verified:
+            verify_elements(client, page, commands, exact=has_clear)
+    except AmbiguousMutationError:
+        output("Stopped: outcome unknown; no automatic retry or rollback. Read the page before writing again.")
+        raise
     except Exception as exc:
-        if clear_attempted:
+        if clear_attempted and not presenting:
             try:
                 restore_page(client, page, snapshot)
                 output(f"Rollback restored {len(snapshot)} prior element(s) on page {page}")
@@ -635,6 +700,7 @@ def make_parser():
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--delay", type=float, default=0.0, help="optional delay between serial requests")
+    parser.add_argument("--backup", help="write a restorable pre-clear element snapshot to this JSON file")
     parser.add_argument("--allow-public", action="store_true", help="allow a public target (unsafe; LAN-only by default)")
     parser.add_argument("--check", action="store_true", help="validate only; do not contact or mutate the device")
     return parser
@@ -675,7 +741,7 @@ def main(argv=None):
         return 0
     client = DeviceClient(args.host, port=args.port, timeout=args.timeout, allow_public=args.allow_public)
     client.health()
-    build_page(client, args.page, layout_text, delay=args.delay)
+    build_page(client, args.page, layout_text, delay=args.delay, backup_path=args.backup)
     return 0
 
 

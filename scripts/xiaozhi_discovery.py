@@ -21,7 +21,22 @@ MDNS_FALLBACK = "xiaozhi.local"
 DISCOVERY_PORT = 50001
 DISCOVERY_MAGIC = b"XIAOZHI_DISCOVER"
 DISCOVERY_RESPONSE = b"XIAOZHI_HERE"
-DEFAULT_CACHE_FILE = os.path.expanduser("~/.hermes/xiaozhi_ip.txt")
+def default_cache_file():
+    override = os.environ.get("XIAOZHI_CACHE_FILE")
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+    if sys.platform == "win32":
+        root = os.environ.get("LOCALAPPDATA", os.path.expanduser("~/AppData/Local"))
+    else:
+        root = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+    return os.path.join(root, "xiaozhi", "devices.txt")
+
+
+DEFAULT_CACHE_FILE = default_cache_file()
+LEGACY_CACHE_FILES = [os.path.expanduser("~/.hermes/xiaozhi_ip.txt"), os.path.expanduser("~/.cache/xiaozhi_ip.txt")]
+DEFAULT_TIMEOUT = 3.0
+DEFAULT_SCAN_TIMEOUT = 2.0
+DEFAULT_WORKERS = 16
 MAX_SCAN_HOSTS = 4096
 HARD_MAX_SCAN_HOSTS = 65536
 RFC1918_NETWORKS = tuple(ipaddress.ip_network(value) for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
@@ -60,10 +75,11 @@ def bounded_local_network(address, network):
 
 
 def valid_health(data):
-    return isinstance(data, dict) and data.get("status") == "ok" and isinstance(data.get("board"), str)
+    return (isinstance(data, dict) and data.get("status") == "ok"
+            and isinstance(data.get("board"), str) and bool(data["board"]))
 
 
-def try_health(host, port=DEFAULT_PORT, timeout=1.0):
+def try_health(host, port=DEFAULT_PORT, timeout=DEFAULT_TIMEOUT):
     try:
         request = urllib.request.Request(f"http://{host}:{port}/", method="GET")
         with HEALTH_OPENER.open(request, timeout=timeout) as response:
@@ -75,14 +91,23 @@ def try_health(host, port=DEFAULT_PORT, timeout=1.0):
         return None
 
 
+def resolve_ipv4(host, port=DEFAULT_PORT):
+    """Bound DNS/mDNS lookup too: socket timeouts do not bound getaddrinfo()."""
+    if unique_private_ipv4([host]):
+        return [host]
+    code = "import json,socket,sys; print(json.dumps([r[4][0] for r in socket.getaddrinfo(sys.argv[1],int(sys.argv[2]),socket.AF_INET,socket.SOCK_STREAM)]))"
+    try:
+        result = subprocess.run([sys.executable, "-c", code, host, str(port)],
+                                capture_output=True, text=True, timeout=3, check=False)
+        addresses = json.loads(result.stdout)
+        return unique_private_ipv4(addresses) if isinstance(addresses, list) else []
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError):
+        return []
+
+
 def resolve_mdns_candidates(port=DEFAULT_PORT):
     """Resolve the compatibility hostname and optionally browse HTTP mDNS services."""
-    candidates = []
-    try:
-        for result in socket.getaddrinfo(MDNS_FALLBACK, port, socket.AF_INET, socket.SOCK_STREAM):
-            candidates.append(result[4][0])
-    except socket.gaierror:
-        pass
+    candidates = resolve_ipv4(MDNS_FALLBACK, port)
 
     try:
         result = subprocess.run(
@@ -130,11 +155,7 @@ def resolve_dnssd_candidates(port=DEFAULT_PORT):
         match = re.search(r"can be reached at\s+([^\s:]+)\.?:(\d+)", lookup, re.IGNORECASE)
         if not match or match.group(2) != str(port):
             continue
-        try:
-            for result in socket.getaddrinfo(match.group(1).rstrip("."), port, socket.AF_INET, socket.SOCK_STREAM):
-                candidates.append(result[4][0])
-        except socket.gaierror:
-            continue
+        candidates.extend(resolve_ipv4(match.group(1).rstrip("."), port))
     return unique_private_ipv4(candidates)
 
 
@@ -144,6 +165,11 @@ def read_cache(path=DEFAULT_CACHE_FILE):
             return unique_private_ipv4(line.strip() for line in handle)
     except OSError:
         return []
+
+
+def cached_addresses(path=DEFAULT_CACHE_FILE):
+    paths = [path] + (LEGACY_CACHE_FILES if path == DEFAULT_CACHE_FILE else [])
+    return unique_private_ipv4(address for source in paths for address in read_cache(source))
 
 
 def save_cache(addresses, path=DEFAULT_CACHE_FILE):
@@ -188,9 +214,37 @@ def networks_from_ifconfig(text):
     return list(dict.fromkeys(networks))
 
 
+def networks_from_windows(text):
+    """PowerShell JSON avoids parsing translated ipconfig field names."""
+    try:
+        records = json.loads(text.lstrip("\ufeff"))
+    except ValueError:
+        return []
+    if isinstance(records, dict):
+        records = [records]
+    networks = []
+    for record in records if isinstance(records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        try:
+            address = record["IPAddress"]
+            network = ipaddress.ip_network(f"{address}/{int(record['PrefixLength'])}", strict=False)
+            if is_trusted_network(network) and not network.is_loopback:
+                networks.append(bounded_local_network(address, network))
+        except (KeyError, ValueError, TypeError):
+            continue
+    return list(dict.fromkeys(networks))
+
+
 def local_networks():
     """Read real interface prefixes on Linux, with a conservative /24 fallback."""
     networks = []
+    if sys.platform == "win32":
+        command = "Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.AddressState -eq 'Preferred'} | Select-Object IPAddress,PrefixLength | ConvertTo-Json -Compress"
+        networks.extend(networks_from_windows(_bounded_command_output(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], 5)))
+        if networks:
+            return networks
     try:
         result = subprocess.run(
             ["ip", "-json", "-4", "address", "show", "up"],
@@ -205,7 +259,7 @@ def local_networks():
         for interface in interfaces:
             if not isinstance(interface, dict):
                 continue
-            if interface.get("ifname") == "lo":
+            if interface.get("ifname") == "lo" or interface.get("operstate") == "DOWN":
                 continue
             address_info = interface.get("addr_info", [])
             if not isinstance(address_info, list):
@@ -293,7 +347,7 @@ def udp_discover(networks, timeout=2.0):
     return unique_private_ipv4(found)
 
 
-def scan_networks(networks, port=DEFAULT_PORT, timeout=0.5, workers=48, all_devices=True, exclude=()):
+def scan_networks(networks, port=DEFAULT_PORT, timeout=DEFAULT_SCAN_TIMEOUT, workers=DEFAULT_WORKERS, all_devices=True, exclude=()):
     def unique_addresses():
         seen = set(exclude)
         for network in networks:
@@ -323,18 +377,27 @@ def scan_networks(networks, port=DEFAULT_PORT, timeout=0.5, workers=48, all_devi
                     if not all_devices:
                         return dict(sorted(found.items(), key=lambda item: ipaddress.ip_address(item[0])))
     finally:
-        pool.shutdown(wait=all_devices, cancel_futures=not all_devices)
+        # Finish the small in-flight batch before callers start device control.
+        pool.shutdown(wait=True, cancel_futures=True)
     return dict(sorted(found.items(), key=lambda item: ipaddress.ip_address(item[0])))
 
 
-def discover(networks, port=DEFAULT_PORT, all_devices=False, verbose=False, cache_file=DEFAULT_CACHE_FILE, workers=48):
+def discover(networks, port=DEFAULT_PORT, all_devices=False, verbose=False,
+             cache_file=DEFAULT_CACHE_FILE, workers=DEFAULT_WORKERS,
+             timeout=DEFAULT_TIMEOUT, scan_timeout=DEFAULT_SCAN_TIMEOUT, hosts=(),
+             restrict_networks=False):
     found = {}
 
-    def probe(stage, candidates, timeout=1.0):
+    def probe(stage, candidates):
         for address in candidates:
+            if restrict_networks and not any(ipaddress.ip_address(address) in network for network in networks):
+                continue
             if address in found:
                 continue
             health = try_health(address, port, timeout)
+            if health is None:
+                # Only read-only identity checks are retried, once and serially.
+                health = try_health(address, port, timeout)
             if health is not None:
                 found[address] = health
                 if verbose:
@@ -343,13 +406,19 @@ def discover(networks, port=DEFAULT_PORT, all_devices=False, verbose=False, cach
                     return True
         return False
 
-    if probe("mDNS", resolve_mdns_candidates(port)):
+    if hosts:
+        probe("explicit", unique_private_ipv4(address for host in hosts for address in resolve_ipv4(host, port)))
         return found
-    if probe("cache", read_cache(cache_file)):
+    if probe("cache", cached_addresses(cache_file)):
+        return found
+    if probe("mDNS", resolve_mdns_candidates(port)):
         return found
     if probe("UDP", udp_discover(networks)):
         return found
-    scanned = scan_networks(networks, port=port, workers=workers, all_devices=all_devices, exclude=found)
+    if verbose:
+        print(f"[*] subnet scan: {workers} workers, {scan_timeout:g}s per host", file=sys.stderr)
+    scanned = scan_networks(networks, port=port, workers=workers, timeout=scan_timeout,
+                            all_devices=all_devices, exclude=found)
     found.update(scanned)
     if verbose:
         for address in scanned:
@@ -360,13 +429,17 @@ def discover(networks, port=DEFAULT_PORT, all_devices=False, verbose=False, cach
 def make_parser():
     parser = argparse.ArgumentParser(description="Discover xiaozhi devices on local IPv4 networks")
     parser.add_argument("--health", action="store_true", help="print health JSON to stderr")
+    parser.add_argument("--json", action="store_true", help="print a JSON array with IP, identity and firmware")
+    parser.add_argument("--host", action="append", default=[], help="probe only this LAN IP/hostname; repeatable")
     parser.add_argument("--save", action="store_true", help="save discovered address(es)")
     parser.add_argument("--cache-file", default=DEFAULT_CACHE_FILE)
     parser.add_argument("--subnet", action="append", default=[], metavar="CIDR", help="scan this subnet; repeatable")
     parser.add_argument("--all", action="store_true", help="return every detected device")
     parser.add_argument("--allow-large-scan", action="store_true")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--workers", type=int, default=48)
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="known-host health timeout (seconds)")
+    parser.add_argument("--scan-timeout", type=float, default=DEFAULT_SCAN_TIMEOUT, help="subnet health timeout (seconds)")
     parser.add_argument("--verbose", "-v", action="store_true")
     return parser
 
@@ -377,12 +450,14 @@ def main(argv=None):
         raise ValueError("port must be between 1 and 65535")
     if not 1 <= args.workers <= 128:
         raise ValueError("workers must be between 1 and 128")
-    if args.subnet:
+    if not 0 < args.timeout <= 30 or not 0 < args.scan_timeout <= 30:
+        raise ValueError("timeouts must be in (0, 30] seconds")
+    if args.host:
+        networks = []
+    elif args.subnet:
         networks = parse_networks(args.subnet, args.allow_large_scan)
     else:
         networks = parse_networks([str(network) for network in local_networks()], args.allow_large_scan)
-    if not networks:
-        raise RuntimeError("no local IPv4 network detected; pass --subnet CIDR")
     if args.verbose:
         print("[*] scan networks: " + ", ".join(map(str, networks)), file=sys.stderr)
 
@@ -394,15 +469,24 @@ def main(argv=None):
         verbose=args.verbose,
         cache_file=cache_file,
         workers=args.workers,
+        timeout=args.timeout,
+        scan_timeout=args.scan_timeout,
+        hosts=args.host,
+        restrict_networks=bool(args.subnet) and not args.host,
     )
     if not devices:
-        print("未找到小智设备", file=sys.stderr)
+        if args.json:
+            print("[]")
+        print("No XiaoZhi found. Check same LAN/Wi-Fi and power; try --host IP or --subnet CIDR --scan-timeout 4. VPN/guest isolation may block discovery.", file=sys.stderr)
         return 1
     addresses = list(devices)
     if args.save:
         save_cache(addresses, cache_file)
+    if args.json:
+        print(json.dumps([dict(devices[address], ip=address) for address in addresses], ensure_ascii=False, indent=2))
     for address in addresses:
-        print(address)
+        if not args.json:
+            print(address)
         if args.health:
             print(json.dumps(devices[address], indent=2, ensure_ascii=False), file=sys.stderr)
     return 0

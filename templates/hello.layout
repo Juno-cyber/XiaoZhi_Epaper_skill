@@ -1,0 +1,7 @@
+clear
+text id=title text="你好，小智" x=16 y=10 font_size=16
+hline id=sep x1=16 x2=280 y=34 width=1
+pixart id=heart art=heart x=20 y=51
+text id=message text="这是来自 Agent 的问候" x=60 y=55 font_size=12
+text id=note text="小小屏幕，慢慢更新。" x=16 y=106 font_size=12
+refresh

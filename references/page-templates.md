@@ -1,214 +1,63 @@
-# Custom Page Layout Templates
+# Layout templates
 
-Ready-made page designs for common use cases. Each template specifies elements
-as `fridge.page.element.control action=add` calls with exact coordinates.
+Save UTF-8 `.layout` files; validate with `quick_page_builder.py IP PAGE FILE --check`,
+then run the same command without `--check`. `refresh` presents once after readback.
+All element writes have `refresh:false`. `switch PAGE` is a compatibility alias
+for the final presentation, not an instruction to show an intermediate screen.
 
-Screen: 296×128 pixels. Safe area: x∈[5,291], y∈[5,123].
+## Greeting / one thought (page 6)
 
-## Template Index
+Use `templates/hello.layout`. Replace its message; keep generous white space.
+A full-screen centered line is `x=10 align=center` (region width 276), not x=148.
 
-| # | Page Name | Dynamic (device) | Dynamic (Hermes) | Static |
-|---|-----------|------------------|-------------------|--------|
-| 1 | Clock + Weather | `clock`, `date` | weather text | title, frame |
-| 2 | Daily Quote | — | quote text | title, separator |
-| 3 | Pixel Art | — | — | bitmap image |
-| 4 | System Dashboard | — | temperature, heap, uptime | labels, frame |
-| 5 | Holiday Countdown | — | days remaining | title, frame |
-| 6 | Today's Focus | — | focus text | title, frame |
-| 7 | Todo List (compact) | — | item text | title, checkboxes |
+## Three tasks (canvas or existing custom page)
 
-## 1. Clock + Weather Page
-
-```
- y=0  ┌──────────────────────────────────────────┐
- y=4  │           14:31                          │  clock (dynamic_type, font=16, center, x=10,y=4)
- y=22 │         2026-07-09 周三                  │  date (dynamic_type, font=12, center, x=10,y=22)
- y=40 ══════════════════════════════════════════════  separator line (x:10→286, y=40)
- y=48 │  ☀ 晴 28°C                              │  weather (Agent-pushed, font=12, x=20,y=48)
- y=68 │  湿度 45% · 风 3级                       │  weather detail (Agent-pushed, font=12, x=20,y=68)
- y=90 │  更新于 14:30                            │  weather update time (Agent-pushed, font=12, x=20,y=90)
- y=128└──────────────────────────────────────────┘
+```text
+clear
+text id=title text="今日待办" x=16 y=6 font_size=16
+hline id=sep x1=16 x2=280 y=30
+rect id=box1 x=16 y=46 w=8 h=8 filled=false
+text id=item1 text="完成最重要的一件事" x=36 y=42 font_size=12
+rect id=box2 x=16 y=68 w=8 h=8 filled=false
+text id=item2 text="散步一会儿" x=36 y=64 font_size=12
+rect id=box3 x=16 y=90 w=8 h=8 filled=false
+text id=item3 text="给今天留一点空白" x=36 y=86 font_size=12
+refresh
 ```
 
-Elements:
-- `clock`: text, dynamic_type="clock", x=10, y=4, font_size=16, align=center
-- `date`: text, dynamic_type="date", x=10, y=22, font_size=12, align=center
-- `sep`: line, x1=10, y1=40, x2=286, y2=40, width=1
-- `weather_main`: text, x=20, y=48, font_size=12 (Agent cron pushes "☀ 晴 28°C")
-- `weather_detail`: text, x=20, y=68, font_size=12 (Agent cron pushes "湿度 45%")
-- `weather_time`: text, x=20, y=90, font_size=12 (Agent cron pushes "更新于 14:30")
+For changing text on a custom page use `page.element.control action=update` with
+stable IDs; no need to clear/rebuild. A filled checkbox is replaced with add.
+The older `templates/todo-list-page.sh` remains a Bash convenience wrapper.
 
-## 2. Daily Quote + Random Knowledge Page
+## Device clock (custom pages only)
 
-```
- y=0  ┌──────────────────────────────────────────┐
- y=2  │ 每日一句                                 │  title (font=12, x=8, y=2)
- y=18 ══════════════════════════════════════════════  separator
- y=26 │ 不积跬步，无以至千里。                   │  quote (font=12, x=10, y=26; custom width is fixed)
- y=44 │                          —— 荀子《劝学》  │  author (font=12, x=10, y=44, align=right)
- y=64 ══════════════════════════════════════════════  separator
- y=72 │ 💡 知识：蜂鸟是唯一能倒退飞行的鸟       │  knowledge (font=12, x=10, y=72)
- y=90 │                                          │
- y=110│ 说"换一句"刷新                           │  hint (font=12, x=8, y=110)
- y=128└──────────────────────────────────────────┘
+Use the [custom-page clock example](custom-pages.md#device-side-clockdate).
+It updates on the device without Agent polling or cron.
+
+## Image and caption
+
+```text
+clear
+image id=art name=my_art x=16 y=12 w=96 h=80
+text id=caption text="留一点想象" x=132 y=32 font_size=16
+text id=note text="今天的小小发现" x=132 y=64 font_size=12
+refresh
 ```
 
-All text elements are Agent-pushed (cron every 6h or on voice command).
+Upload `my_art` first with exactly `ceil(96/8)*80=960` bytes. For procedural art,
+see `zentangle_generator.py --help`. Built-in icons use `pixart … art=heart`
+with a fixed 24×24 footprint; run `pixel_art_generator.py --list` for names.
+The builder prepares images before clearing and checks stored byte counts.
 
-## 3. Pixel Art / Fun Image Page
+## DSL reference
 
-```
- y=0  ┌──────────────────────────────────────────┐
-      │                                          │
-      │         [128×96 pixel art bitmap]        │  image (x=84, y=16, w=128, h=96)
-      │                                          │
-      │                                          │
- y=128└──────────────────────────────────────────┘
-```
+Commands: `clear`, `text` (`label` alias), `rect`, `line`, `hline`, `image`,
+`pixart`, `refresh`, `switch N`. Keys follow the [API fields](api-reference.md).
+Quote text with spaces; booleans are `true/false`. For horizontal rules use
+`hline id=sep x1=16 x2=280 y=30 width=1`; use `line` for intentional diagonals.
+At most 30 elements, unique IDs, no individual `refresh:true`, and no unsupported
+fields. Add in bottom-to-top drawing order. Omit `clear` for a small replacement
+of known IDs; omit `refresh`/`switch` when only staging data is intended.
 
-Single image element. Upload 1-bpp bitmap via `POST /api/canvas_image?name=pixel_art_1`,
-then `element.add { type:"image", name:"pixel_art_1", x:84, y:16, w:128, h:96 }`.
-Use `fridge.page.control action=clear` + re-add to swap images.
-
-## 4. System Dashboard Page
-
-```
- y=0  ┌──────────────────────────────────────────┐
- y=2  │ System Status                            │  title (font=12, x=8, y=2)
- y=18 ══════════════════════════════════════════════  separator
- y=26 │ Chip Temp:    52.3°C                     │  Agent-pushed text (font=12, x=10, y=26)
- y=44 │ Free Heap:   Heap: 128KB                 │  Agent-pushed text (font=12, x=10, y=44)
- y=62 │ Uptime:      Up: 1d 3h 42m               │  Agent-pushed text (font=12, x=10, y=62)
- y=80 │                                          │
- y=96 │ WiFi: <IP>                               │  ip (static, font=12, x=10, y=96)
- y=112│ Flash: 16MB · PSRAM: 8MB                 │  hw info (static, font=12, x=10, y=112)
- y=128└──────────────────────────────────────────┘
-```
-
-Firmware 2.0.7 supports only `clock` and `date` as device-side dynamic types.
-Push system metrics from an Agent/cron by updating stable text element IDs.
-
-## 5. Holiday Countdown Page
-
-```
- y=0  ┌──────────────────────────────────────────┐
- y=4  │ 距 下个假期                              │  title (font=12, center, x=10, y=4)
- y=24 │                                          │
- y=32 │         42                               │  days number (font=16, center, x=10, y=32)
- y=52 │          天                              │  unit (font=12, center, x=10, y=52)
- y=72 │ 中秋节 09-29                             │  holiday name (Agent-pushed, font=12, center, x=10, y=72)
- y=90 ══════════════════════════════════════════════  separator
- y=100│ 下一个: 国庆节 10-01 (54天)              │  next holiday (Agent-pushed, font=12, x=10, y=100)
- y=128└──────────────────────────────────────────┘
-```
-
-Agent cron (daily) calculates days to next Chinese legal holiday and pushes text.
-
-## 6. Today's Focus Page
-
-```
- y=0  ┌──────────────────────────────────────────┐
- y=4  │ 🎯 今日 Focus                            │  title (font=16, center, x=10, y=4)
- y=28 ══════════════════════════════════════════════  separator
- y=40 │                                          │
- y=48 │     完成自定义页面验证                   │  focus text (font=16, center, x=10, y=48)
- y=72 │                                          │
- y=90 ══════════════════════════════════════════════  separator
- y=100│ 说"设置Focus..."修改                    │  hint (font=12, center, x=10, y=100)
- y=128└──────────────────────────────────────────┘
-```
-
-Simple single-focus page. Agent pushes focus text via voice command or daily cron.
-
-## 7. Todo List Page (Compact 12px)
-
-```
- y=0  ┌──────────────────────────────────────────┐
- y=2  │ 待办事项                                 │  title (font=12, x=8, y=2)
- y=18 ══════════════════════════════════════════════  separator
- y=22  ☐ 买菜                                   │  box1(6×6,x=6,y=24) + item1(font=12, x=16, y=22)
- y=36  ☐ 做饭                                   │  box2 + item2
- y=50  ☐ 写日记                                 │  box3 + item3
- y=64  ☐ ...                                    │  box4 + item4 (optional)
- y=112 说"提醒我..."添加待办                    │  hint (font=12, x=8, y=112)
- y=128└──────────────────────────────────────────┘
-```
-
-- Row spacing: 14px (12px font + 2px gap)
-- Checkbox: 6×6 rect at x=6, text at x=16 (10px gap)
-- Max ~5 rows before hitting hint at y=112
-- Mark done: remove box, re-add with `filled: true`
-- Item text: Agent-pushed via `element.update`
-
-## Split-Screen Variant (Todo + Gold Price)
-
-Add a vertical divider at x=185 and place gold price elements on the right:
-
-```
- ┌────────────────────────────────┬───────────────┐
- │ 待办事项                       │ 黄金¥/g       │
- ════════════════════════════════╪═══════════════
- │  ☐ 买菜                        │  ¥892.6/g    │
- │  ☐ 做饭                        │  08:39更新   │
- │  ☐ 写日记                      │               │
- │  说"提醒我..."添加待办         │               │
- └────────────────────────────────┴───────────────┘
-```
-
-- `vsep`: line, x1=185, y1=2, x2=185, y2=108, width=1
-- Right zone: x=192, width ~100px (~5 chars at 16px, ~7 at 12px)
-- Gold price pushed by cron (`gold_price_update.sh`, every 60m)
-
-## 8. Canvas 小海报 + 角落禅绕画 (Page 6, 实测 2026-08-05)
-
-画布页 (page 6) 单屏布局示例：标题 → 分隔线 → 图标 + 两行大字正文 → 脚注，
-右上角带 zentangle 角落画框。适配 quote_fetcher 的中长文案（拆两行）与"玩味/洞察"意图。
-
-```
- y=0   ┌─────────────────────────────┬────────┐
- y=6   │ 有顶天家族                    │        │
- y=26  │ ─────────────                │  zp    │  zentangle 画框 (196,6,92,62)
- y=44  │ [cat] 这是傻瓜的              │ (rose/ │
- y=66  │       血脉使然啊。            │  mandala│
- y=100 │ — 一言-有顶天家族            │  …)    │
- y=128 └─────────────────────────────┴────────┘
-```
-
-Elements（固件 2.0.7，legacy 名与聚合名均可 — 全部 refresh=false，最后一条 refresh）：
-
-| id | type | params |
-|----|------|--------|
-| title | text | "有顶天家族" x=16 y=10 font_size=12 |
-| div | hline | x1=16 x2=180 y=26 width=1 |
-| cat | image | name=cat x=24 y=44 w=24 h=24 |
-| t1 | text | "这是傻瓜的" x=58 y=46 font_size=16 |
-| t2 | text | "血脉使然啊。" x=58 y=68 font_size=16 |
-| note | text | "— 一言-有顶天家族" x=24 y=100 font_size=12 |
-| zp | image | name=zp x=196 y=6 w=92 h=62 |
-
-宽度校验（全部 ≤291）：t2 最长 58+96=154；div 只到 x=180，不碰 zen 区 (x≥196)。
-
-完整推屏序列（实测通过）：
-
-```bash
-IP="${1:?usage: script <device-ip>}"
-# 1. 角落禅绕画先上传（可换 mandala/rose/lissajous, seed 随机）
-python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/zentangle_generator.py \
-  --upload $IP --pattern rose --name zp --region 196,6,92,62 --seed $RANDOM
-# 2. clear → 批量 add (refresh=false) → 最后 refresh
-curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.clear","args":{}}' >/dev/null
-for cmd in \
-  '{"tool":"fridge.canvas.add_text","args":{"id":"title","text":"有顶天家族","x":16,"y":10,"font_size":12,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_line","args":{"id":"div","x1":16,"y1":26,"x2":180,"y2":26,"width":1,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_image","args":{"id":"cat","name":"cat","x":24,"y":44,"w":24,"h":24,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_text","args":{"id":"t1","text":"这是傻瓜的","x":58,"y":46,"font_size":16,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_text","args":{"id":"t2","text":"血脉使然啊。","x":58,"y":68,"font_size":16,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_text","args":{"id":"note","text":"— 一言-有顶天家族","x":24,"y":100,"font_size":12,"refresh":false}}' \
-  '{"tool":"fridge.canvas.add_image","args":{"id":"zp","name":"zp","x":196,"y":6,"w":92,"h":62,"refresh":false}}' \
-  '{"tool":"fridge.canvas.refresh","args":{"refresh":true}}' \
-; do curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" -d "$cmd"; echo; done
-```
-
-复用要点：换文案时改 t1/t2/note 三处；换意图换图标（左列 icon 25 选 1）与 zen 图案；
-分隔线 x2 保持 <196，正文最长行右端保持 <196，即可与任意角落画框共存。
+Builder calls are not atomic against independent writers, dynamic clocks or
+voice transitions. See [refresh diagnosis](pitfalls.md#an-update-seems-to-refresh-twice).

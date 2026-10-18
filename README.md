@@ -1,190 +1,78 @@
 # XiaoZhi E-Paper Skill
 
-> 一个让 AI Agent 通过局域网 HTTP 控制 ESP32 电子墨水屏的技能包。
-> 支持页面管理、画布绘制、动态元素、自定义页面持久化，以及 Web 控制台。
+让 Agent 通过局域网操控小智墨水屏。支持画布、自定义页面、时钟、图片、冰箱数据、设备名称与常驻页设置。
 
-## 这是什么
+**Agent 从 [SKILL.md](SKILL.md) 开始，不需要通读仓库。** 当前契约对齐固件 2.5.2.1 与 Litsea_Top 2026-10-18 版本；旧版 2.0.7/2.0.8 的聚合工具继续适用，新增 HTTP 功能以实际固件为准。
 
-这个仓库是一个 **Agent Skill** — 一套让 AI 助手（如 Hermes Agent 或其他支持 MCP/工具调用的 Agent）控制小智 ESP32 设备电子墨水屏的知识包。
+## 快速使用
 
-它包含：
-- **SKILL.md** — Agent 可读的技能定义（触发条件、API 参考、工作流）
-- **references/** — 详细的参考文档（API、固件、Web、模板、设计哲学、坑清单）
-- **scripts/** — 可直接运行的 Python 工具脚本
-- **templates/** — 即用型页面布局模板
-
-## 部署到 Hermes
-
-仓库是唯一事实源（有 Git 历史与协作），Hermes 运行的是部署副本。修改后一键部署：
+核心只需要 Python 3.10+，无需安装 Python 依赖。以下命令从仓库根目录执行；Windows 使用 `py -3 -X utf8` 替代 `python3`，布局和参数保存成 UTF-8 文件，避免不同 Shell 的引号差异。
 
 ```bash
-bash deploy.sh          # 部署到 ~/.hermes/skills/smart-home/xiaozhi-control/
-bash deploy.sh --dry-run # 只预览将复制/清理的文件
+python3 scripts/xiaozhi_discovery.py --json --save
+python3 scripts/xiaozhi.py DEVICE_IP health
+python3 scripts/xiaozhi.py DEVICE_IP pages
+python3 scripts/xiaozhi.py DEVICE_IP elements 6
 ```
 
-部署脚本只负责同步文件，不会替你执行 `git add`、提交或推送。首次部署会自动创建目标目录；也可通过 `XIAOZHI_SKILL_DIR` 指定测试目录。已从仓库删除的脚本、模板和参考文档会从部署副本中清理。
-
-> 注意：`deploy.sh` 的方向是 **仓库 → Hermes**（旧 `sync.sh` 已删除）。只改仓库，不要直接改 Hermes 目录——否则下次部署会被覆盖。
-
-## 多机一致性（Multi-Machine Sync）
-
-要让多台机器上的 skill **和它的 cron 行为**完全一致，遵循"单一来源 + 引用"架构：
-
-1. **skill 文件**：仓库是唯一事实源。每台机器执行：
-   ```bash
-   git clone https://github.com/Juno-cyber/XiaoZhi_Epaper_skill.git
-   cd XiaoZhi_Epaper_skill && bash deploy.sh
-   # 以后更新：git pull && bash deploy.sh
-   ```
-2. **cron 规则**：`templates/canvas-creativity-cron-prompt.md` 是 cron 行为规则的唯一来源（已入库）。
-   cron job 的 prompt **不要**粘贴全文；首行写可视化元数据，下一行写引用指令：
-   > `[XIAOZHI_CRON_META v1 page=6 mode=canvas-refresh]`
-   > 严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md 中『Prompt 正文』的全部指令。该模板文件是规则的唯一来源，随 skill 仓库 git 同步；若文件缺失或无法读取，直接报错结束。
-   
-   创建 cron job 参数：`schedule: "every 30m"`、`deliver: "local"`、`enabled_toolsets: ["terminal","file"]`、`skills: ["xiaozhi-control"]`。
-3. **改规则** = 改模板文件 + `git push` → 各机器 `git pull && bash deploy.sh` → 下次 cron 自动生效。
-   各机器的 cron job 配置零漂移（prompt 永远是那一行引用），不会再出现"某台机器还是旧措辞"。
-
-## 设备要求
-
-- ESP32-S3 开发板，运行 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 固件
-- 启用 LocalControl（HTTP 服务器，端口 8080 + mDNS）
-- 带电子墨水屏（默认 296×128 像素）
-- 与控制端在同一局域网
-
-> 安全提示：LocalControl 使用无认证的明文 HTTP，只能用于可信局域网。不要将设备 8080 端口或本地开发代理暴露到公网。
-
-## 快速开始
-
-### 1. 发现设备
+将 `DEVICE_IP` 替换为发现结果中选定的地址。整页显示：
 
 ```bash
-python3 scripts/xiaozhi_discovery.py --health --save
+python3 scripts/quick_page_builder.py DEVICE_IP 6 templates/hello.layout --check
+python3 scripts/quick_page_builder.py DEVICE_IP 6 templates/hello.layout --backup before.json
 ```
 
-多设备或非 `/24` 网络可显式指定：
+第一条仅离线校验；第二条会替换画布页内容、校验回读结果，再请求一次显示。`before.json` 保存修改前的元素，可用于恢复。原有自定义页面不受这个示例影响。
+
+其他常用操作：
 
 ```bash
-python3 scripts/xiaozhi_discovery.py --subnet 192.168.40.0/27 --all --health
+python3 scripts/xiaozhi.py DEVICE_IP show 5
+python3 scripts/xiaozhi.py DEVICE_IP home
+python3 scripts/xiaozhi.py DEVICE_IP home --page 5 --timeout-min 2
+python3 scripts/xiaozhi.py DEVICE_IP name --set "书桌小智"
 ```
 
-扫描总量超过 4096 个地址需显式使用 `--allow-large-scan`，并始终受 65536 地址硬上限保护；自动检测到过大的接口网段时只扫描本机所在 `/24`，避免意外耗尽内存与连接资源。
+`timeout-min 0` 关闭自动返回；设置常驻页本身不会切页。完整参数见 [API](references/api-reference.md)。
 
-### 2. 健康检查
+## 安装到 Agent
+
+仓库是维护来源，安装副本由脚本同步；不自动提交、推送或创建定时任务。
 
 ```bash
-curl http://<IP>:8080/
-# → {"status":"ok","board":"...","version":"..."}
+python3 scripts/install_skill.py --agent hermes --dry-run
+python3 scripts/install_skill.py --agent hermes
+python3 scripts/install_skill.py --agent codex
+python3 scripts/install_skill.py --target /path/to/your-agent/skills/xiaozhi-control
 ```
 
-### 3. 调用 MCP 工具
+默认分别安装到 `~/.hermes/skills/smart-home/xiaozhi-control` 和 `$CODEX_HOME/skills/xiaozhi-control`（未设置时为 `~/.codex/skills/xiaozhi-control`）。`--target` 或 `XIAOZHI_SKILL_DIR` 可指定其他运行环境。旧命令 `bash deploy.sh` 继续调用同一个安装器。安装会清理受管理目录里的过期同类文件，拒绝符号链接与危险路径。
 
-```bash
-# 切换到画布页面
-curl -X POST http://<IP>:8080/api/call \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.pagemanager","args":{"target_page":6}}'
+## 发现与刷新
 
-# 在画布上添加文字（聚合工具 + action 分发）
-curl -X POST http://<IP>:8080/api/call \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.control","args":{"action":"add_text","id":"hello","text":"Hello!","x":10,"y":10,"font_size":16,"align":"left","refresh":true}}'
-```
+- 发现顺序：已验证缓存 → mDNS → UDP → 本机网段。已知地址读探测最多重试一次；扫描默认 16 并发、每地址 2 秒，控制请求仍串行。
+- 找不到时：`--host IP` 直接探测，或 `--subnet 192.168.1.0/24 --scan-timeout 4`。网络范围需来自本机/用户，不盲扫常见网段；显式网段也约束缓存和 mDNS 候选，跳过 Linux 已断开的接口。
+- 缓存：Linux/macOS 为 `$XDG_CACHE_HOME/xiaozhi/devices.txt`（默认 `~/.cache`）；Windows 为 `%LOCALAPPDATA%/xiaozhi/devices.txt`。可设 `XIAOZHI_CACHE_FILE`，兼容读取旧 Hermes 缓存。缓存只提供候选地址，每次重新验证。
+- Linux 使用接口信息，macOS 使用 `ifconfig`/可选 `dns-sd`，Windows 使用 PowerShell 网络 JSON；均可用 `--host`/`--subnet` 兜底。
+- 布局始终先写后显示。`switch + refresh` 被合并为最后一次显示请求。HTTP 返回与回读确认的是设备状态，屏幕实际完成仍需观察或串口日志；全刷波形的多阶段闪烁并不等于提交了两次。
 
-### 4. 使用布局 DSL 一键部署
+控制服务无认证，只用于可信局域网；不要把 8080 或本地代理暴露到公网。故障排查见 [pitfalls.md](references/pitfalls.md)。
 
-```bash
-python3 scripts/quick_page_builder.py <IP> 6 - << 'EOF'
-clear
-text id=title text="今日待办" x=8 y=2 font_size=12 align=left
-line id=sep x1=0 y1=18 x2=295 y2=18 width=1
-text id=item1 text="写论文" x=20 y=24 font_size=12
-text id=item2 text="训模型" x=20 y=42 font_size=12
-text id=item3 text="做饭" x=20 y=60 font_size=12
-refresh
-EOF
-```
-元素默认 `refresh=false` 批量添加，最后一行 `refresh` 统一刷新。
-执行前可加 `--check` 只验证布局；解析错误、越界、重复 ID、超过 30 个元素和设备错误都会返回非零退出码。
+## 可选功能与验证
 
-### 5. 在对话中查看 Cron 可视化
-
-创建或修改小智定时任务后生成一张自包含 SVG：
-
-```bash
-python3 scripts/workflow_map.py --discover
-```
-
-默认输出到 `~/.hermes/xiaozhi_canvas/workflow-map.svg`，同时生成经过脱敏的
-`workflow-map.json`。对话客户端支持本地图片或附件时，Agent 会在同一条回复中直接展示/附上 SVG；设备暂时离线也会生成任务视图并标明离线。
-
-只想先看设计效果、尚未创建任务时，可以无副作用地生成候选预览：
-
-```bash
-python3 scripts/workflow_map.py --discover \
-  --preview-name "工作日提醒" --preview-schedule "0 8 * * MON-FRI" --preview-page 7
-```
-
-## 功能概览
-
-| 功能 | 说明 |
-|------|------|
-| 设备发现 | mDNS / 缓存 IP / 端口扫描，自动发现局域网内设备 |
-| 页面切换 | 6 个内置页面 + 最多 9 个自定义页面 (7-15) |
-| 画布绘制 | 文字、线条、矩形、图片，支持 LittleFS 持久化 |
-| 自定义页面 | 创建/删除/重命名，元素持久化到 Flash，重启不丢失 |
-| 动态元素 | 设备端时钟/日期（无需 Agent）+ Agent 推送（天气/系统指标/股价等）|
-| 像素画 | 25 种内置 24×24 像素画素材，自动生成并上传 |
-| Web 控制台 | 浏览器端管理界面，支持手绘、拖拽、预览 |
-| Cron 可视化 | Hermes 在对话中展示任务、时间轴、目标页面、状态与风险 |
-| 屏幕设计哲学 | 10 条原则 + 5 个刷新前问题，让屏幕成为 Agent 的"生活画布" |
-
-## 文档索引
-
-| 文档 | 内容 |
-|------|------|
-| [SKILL.md](SKILL.md) | Agent 技能定义 — 触发条件、API 参考、工作流 |
-| [references/api-reference.md](references/api-reference.md) | HTTP API + MCP 工具完整参考 |
-| [references/pitfalls.md](references/pitfalls.md) | 当前故障与安全边界清单 |
-| [references/custom-pages.md](references/custom-pages.md) | 自定义页面架构、动态元素、持久化 |
-| [references/page-templates.md](references/page-templates.md) | 7 种即用型页面布局模板 |
-| [references/firmware-development.md](references/firmware-development.md) | 固件编译、烧录、调试、源码结构 |
-| [references/web-console.md](references/web-console.md) | Web 控制台搭建、CORS 配置、前端 API |
-| [references/canvas-web-interaction.md](references/canvas-web-interaction.md) | 画布交互模式：统一事件、离屏画笔、拖拽 |
-| [references/display-philosophy.md](references/display-philosophy.md) | 屏幕设计哲学：10 原则 + 5 问题 |
-| [references/workflow-map.md](references/workflow-map.md) | 定时任务 × 屏幕 总览图（一张 SVG 概括 cron 如何改屏） |
-| [references/hermes-workflow.md](references/hermes-workflow.md) | Hermes 工作流：Web 设计委托、cron 数据推送 |
-
-## 屏幕设计哲学
-
-这个 Skill 不仅仅是一个技术工具。它包含一套设计哲学——把电子墨水屏当作 AI Agent 在现实世界的"生活画布"，而非简单的信息显示器。
-
-> 你的目标不是"把屏幕填满"，而是"让朋友觉得这一眼值得看"。
-
-详见 [references/display-philosophy.md](references/display-philosophy.md)。
-
-## 技术栈
-
-- **设备端**: ESP32-S3, ESP-IDF v5.4, xiaozhi-esp32 固件
-- **通信**: HTTP (局域网), MCP (Model Context Protocol)
-- **存储**: LittleFS (2MB 分区, 存储图片和页面布局)
-- **屏幕**: 296×128 电子墨水屏 (GxEPD2)
-- **控制端**: Python 3, curl, 任何支持 HTTP 的 Agent
-
-## 依赖与测试
-
-设备发现、HTTP 控制、布局构建和文案抓取只依赖 Python 标准库。禅绕画、PNG 预览和串口抓取的可选依赖：
-
-```bash
-python3 -m pip install -r requirements-optional.txt
-```
-
-主要支持 Linux 和 macOS；Windows 建议通过 WSL 使用。运行离线测试：
+- `pixel_art_generator.py`：25 个内置 24×24 图标。
+- `zentangle_generator.py`：程序化线稿；依赖 NumPy，PNG 预览另需 Pillow。
+- `quote_fetcher.py`：文案与去重。`crash_log.py`：串口日志，需要 pyserial。
+- 定时刷新仅在用户需要时配置；使用 Hermes 时按需读取 [定时任务说明](references/hermes-workflow.md) 和共享模板。
+- 深入开发分别查看固件和网站自己的文档；本仓库仅保留 [固件索引](references/firmware-development.md) 与 [网站索引](references/web-console.md)，减少过时实现副本。
 
 ```bash
 python3 -m unittest discover -s tests -v
+python3 scripts/quick_page_builder.py 127.0.0.1 6 templates/hello.layout --check
 ```
 
-## License
+可选依赖：`python3 -m pip install -r requirements-optional.txt`。Linux 可直接运行全套测试；跨系统核心测试见 `tests/test_control.py`，Windows/macOS 专用分支用模拟输入覆盖，实际环境仍需验证。
 
-MIT
+2026-10-18 真机验证（固件 2.5.2.1）：发现设备成功；画布 6 个元素回读一致；包含旧式 `switch + refresh` 的布局只发送一次最终显示请求，用户现场确认第二轮测试只刷新一次、显示正常。串口因系统权限不可读取，未取得驱动刷新日志；本次未测试重启持久化，也未修改或烧录固件。
+
+License: MIT

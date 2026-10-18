@@ -1,284 +1,146 @@
-# API Reference — xiaozhi ESP32 HTTP & MCP Tools
+# Local HTTP / MCP contracts
 
-Complete reference for the HTTP API and MCP tools exposed by the xiaozhi-esp32
-device when LocalControl is enabled (HTTP server on port 8080 + mDNS `xiaozhi-<MAC>.local`).
+Reference: xiaozhi-esp32 `178aca9`, firmware 2.5.2.1 (2026-10-18).
+Device base URL: `http://DEVICE_IP:8080`. Verify `GET /` before mutation.
 
-## HTTP Endpoints
-
-### Health Check
+## Portable CLI
 
 ```bash
-curl http://<IP>:8080/
-# → {"status":"ok","board":"bread-compact-wifi-epaperx","name":"好运来的小智","version":"2.0.7","idf_version":"v5.4.2","wifi_connected":true,"mac":"3c:0f:02:d2:24:a0","hostname":"xiaozhi-d224a0","mdns":"xiaozhi-d224a0.local","ip":"192.168.1.10","http_url":"http://192.168.1.10:8080/"}
-#    （固件 2.0.7 起 `/` 返回字段更全：hostname / mdns / mdns_url / wifi_connected / idf_version / name）
+python3 scripts/xiaozhi.py DEVICE_IP health
+python3 scripts/xiaozhi.py DEVICE_IP pages
+python3 scripts/xiaozhi.py DEVICE_IP elements 7
+python3 scripts/xiaozhi.py DEVICE_IP layout 5
+python3 scripts/xiaozhi.py DEVICE_IP show 7
+python3 scripts/xiaozhi.py DEVICE_IP home
+python3 scripts/xiaozhi.py DEVICE_IP home --page 7 --timeout-min 2
+python3 scripts/xiaozhi.py DEVICE_IP name --set "书桌小智"
+python3 scripts/xiaozhi.py DEVICE_IP call fridge.stats.summary
+python3 scripts/xiaozhi.py DEVICE_IP call fridge.page.element.control --args-file args.json
 ```
 
-### Built-in Device Scanner UI
-
-```
-GET http://<IP>:8080/ui
-# → Returns an HTML page that auto-scans the LAN for xiaozhi devices
-```
-
-### Call MCP Tool (simplified format — recommended)
-
-```bash
-curl -X POST http://<IP>:8080/api/call \
-  -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.stats.summary","args":{}}'
-```
-
-### Raw JSON-RPC (alternative endpoint)
-
-```bash
-curl -X POST http://<IP>:8080/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fridge.stats.summary","arguments":{}}}'
-```
-
-**Two API formats — know which endpoint uses which**: The device has two HTTP
-endpoints for MCP calls: `/api/call` uses `{"tool":"...","args":{}}` format
-(simplified, by `local_control.cc`), while `/mcp` uses JSON-RPC
-`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"...","arguments":{}}}`
-format. Mixing them up returns `{"error":"Missing 'tool' field"}`. For curl
-testing, always use `/api/call` with the simplified format — it's shorter and
-doesn't require an incrementing `id` field. The web console JS also uses `/api/call`.
-
-### MCP Response Structure
-
-The ESP32 returns JSON-RPC 2.0 wrapped responses. The actual tool result is a
-JSON string inside `result.content[0].text`. For example:
+`--port`, `--timeout` (default 20s), `--expect-mac` go before the subcommand.
+For raw tool calls `args.json` contains only the args object, e.g.:
 
 ```json
-{
-  "jsonrpc": "2.0", "id": 10000,
-  "result": {
-    "content": [{ "type": "text", "text": "{\"total_items\":1,...}" }],
-    "isError": false
-  }
-}
+{"action":"update","page":7,"id":"weather","text":"晴 28C","refresh":true}
 ```
 
-Clients must `JSON.parse()` the inner `text` field to get the actual data.
+Use stable IDs for small updates; use the validated builder for complete layouts.
+An update with `refresh=true` already presents the page: do not call `show` again.
+CLI errors are nonzero; output is decoded JSON. No automatic write retries.
 
-### Canvas Image Upload
+## HTTP endpoints
 
-```bash
-# Upload a row-padded 1-bpp raw bitmap
-curl -X POST "http://<IP>:8080/api/canvas_image?name=my_image" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @image.bin
-```
+| Method / path | Input / response |
+|---|---|
+| `GET /` | `status,board,name,version,idf_version,wifi_connected,mac,hostname,mdns,ip,http_port,http_url,mdns_url` |
+| `POST /api/call` | `{"tool":"fridge.…","args":{…}}`; simplified MCP call |
+| `POST /mcp` | JSON-RPC `tools/list` or `tools/call`; not the simplified format |
+| `GET /api/device_name` | `{status,name}` |
+| `POST /api/device_name` | `{name}`; 1–64 UTF-8 bytes, no controls; empty string restores default |
+| `GET /api/home_page` | `{status,page,timeout_min}`; configured home, **not current page** |
+| `POST /api/home_page` | Both `{page,timeout_min}` required; integer page 1–15, minutes 0–60 |
+| `GET /api/page_layout?page=N` | Read-only render description for pages 1–15, including bitmap data |
+| `GET /api/canvas_image` | Stored files `[{name,size},…]` |
+| `POST /api/canvas_image?name=NAME` | Binary body, `application/octet-stream`; returns status |
+| `GET /ui` | Firmware's small device scanner UI |
 
-### List Stored Images
+Home-page setting persists in NVS, resets the return countdown immediately, and
+**does not switch/refresh**. `timeout_min:0` disables return while keeping the
+boot home page. Return runs only in idle state; after conversation ends, a fresh
+full wait begins. Confirm a custom page exists before selecting it as home.
 
-```bash
-curl http://<IP>:8080/api/canvas_image
-# → [{"name":"my_image","size":512}]
-```
+`/api/page_layout` is a preview description, not a screenshot or restorable
+mutation list. IDs are internal/prefixed; line start is `(x,y)` and end is
+`(x1,y1)`. Its `x2,y2` are internal fields, not the API's second endpoint.
+For backup/edit/readback use the MCP element list, whose line endpoints really
+are `(x1,y1)` → `(x2,y2)`. Preview does not report currently displayed page,
+frame completion, or guaranteed z order.
 
-## Available MCP Tools
+## MCP results and transport
 
-MCP tools exposed by the device (`/mcp` `tools/list` 可见 14 个 AddTool：10 fridge core + 3 UI aggregators + 1 network)。固件 2.0.7 起 `tools/list` **分页**（返回 `nextCursor`，如 `"fridge.canvas.control"` 表示还有下一页）；旧细粒度名由 LocalControl 兼容映射，**不出现在** `/mcp` 工具清单里，仅 `/api/call` 可用。`fridge.help` 工具在 2.0.7 **已移除**。
+Current `/api/call` usually returns `{result:{content:[{type:"text",text:"…"}],isError:false}}`;
+older firmware may also include `jsonrpc,id`. Decode `content[].text` JSON to
+obtain the result object/array. Reject outer `error`, `result.isError`, inner
+`error`/failed `status`, malformed output, or plain-text error messages.
 
-### Fridge Core (10 tools)
+Firmware waits up to **15 seconds** for tool execution. Client timeout should be
+20s or longer. A tool request body must fit **4095 UTF-8 bytes**. Calls are serial;
+batch means several serial calls with `refresh:false`, not a transaction endpoint.
+No API reports physical panel completion. A timeout can occur after execution;
+inspect state before another write, including rollback.
 
-| Tool | Description | Key Args |
-|------|-------------|----------|
-| `fridge.item.get` | Get single item | `item_id` |
-| `fridge.item.add` | Add item | `name`, `category`, `quantity`, `unit`, `expire_time`, `storage_state`(opt) |
-| `fridge.item.remove` | Remove item | `item_id` |
-| `fridge.item.clear_all` | Clear all items | `{}` |
-| `fridge.item.list` | List all items | `category`(opt), `limit`(opt), `sort_by`(opt), `order`(opt) |
-| `fridge.item.update` | Update item | `item_id`, `name` + optional fields to change |
-| `fridge.stats.summary` | Fridge statistics | `{}` |
-| `fridge.stats.query` | Query items by filter | `category`(opt), `filter`(opt: all/expired/expiring_soon), `expiring_days`(opt) |
-| `fridge.pagemanager` | Switch e-paper page | `target_page`: 1-15 |
-| `fridge.recipe.recommend` | Recommend recipe + display | `recommendation_mode`, `dish_name`, `required_ingredients`, `summary`(opt), `extra_ingredients`(opt), `cooking_time`(opt), `switch_page`(opt) |
+For capability discovery use JSON-RPC `tools/list` on `/mcp` and follow every
+`nextCursor`. There are 14 fridge/UI/network tools, plus other firmware tools.
+`fridge.help` is absent. Legacy names such as `fridge.canvas.add_text` are mapped
+only by `/api/call`; use aggregate names in new code. Firmware 2.0.5 is outside
+the current builder contract; do not silently switch to an unsafe fallback.
 
-### UI Aggregators (3 tools — each uses `action` to dispatch)
+## Page / element tools
 
-| Tool | Description | action values | Key Args |
-|------|-------------|---------------|----------|
-| `fridge.canvas.control` | Control canvas page 6 | `add_text`, `add_rect`, `add_line`, `add_image`, `list`, `remove`, `clear`, `refresh` | `id`, `text`, `name`, `x`, `y`, `x1`, `y1`, `x2`, `y2`, `w`, `h`, `width`, `font_size`, `align`, `filled`, `refresh` |
-| `fridge.page.control` | Manage custom pages 7-15 | `create`, `delete`, `list`, `rename`, `clear` | `page`, `name`, `refresh` |
-| `fridge.page.element.control` | Control elements on pages 7-15 | `add`, `update`, `remove`, `list` | `page`, `id`, `type`, `text`, `x`, `y`, `x1`, `y1`, `x2`, `y2`, `w`, `h`, `width`, `font_size`, `align`, `filled`, `dynamic`, `dynamic_type`, `refresh` |
+| Tool | Actions / required fields |
+|---|---|
+| `fridge.pagemanager` | `target_page:1..15`; requests a full refresh, including same-page calls |
+| `fridge.canvas.control` | `action:add_text,add_rect,add_line,add_image,list,remove,clear,refresh,reorder` |
+| `fridge.page.control` | `action:create,list,rename,delete,clear`; page 7–15 where applicable; create takes `name` and returns allocated `page` |
+| `fridge.page.element.control` | `action:add,update,remove,list,reorder`, `page:7..15`; add also takes `type:text,rect,line,image` |
+| `device.network.info` | `{}` → Wi-Fi/SSID, IP, MAC, mDNS and HTTP URLs |
 
-### Network (1 tool)
+Page list includes built-ins (`builtin:true`) and custom pages; never assume
+page 7 is free. Delete a custom page also switches to page 5 in current firmware.
 
-| Tool | Description | Key Args |
-|------|-------------|----------|
-| `device.network.info` | Wi-Fi/网络信息（含真实 mdns 名） | `{}` → `wifi_connected/ssid/ip/mac/hostname/http_port/http_url/mdns/mdns_url` |
+| Element | Fields (flat in args) |
+|---|---|
+| text | `id,text,x,y,font_size:12|16,align:left|center|right`; canvas permits `max_width` |
+| rect | `id,x,y,w,h,filled` |
+| line | `id,x1,y1,x2,y2,width`; custom pages also send `x=x1,y=y1` |
+| image | `id,name,x,y,w,h`; file must exist with matching byte size |
 
-### Legacy Compatibility
+For canvas use `action:add_text` etc.; for custom pages use `action:add,type:text`
+etc. Reusing an ID replaces an element. `update` on custom pages changes **text
+only**, not geometry; use add to replace geometry. `remove` requires `id`.
+Always specify `refresh:false` during a batch, even where it is the default.
+Custom page `clear` defaults true, so omission can show an empty page.
 
-旧细粒度名（`fridge.canvas.add_text`、`fridge.page.create`、`fridge.page.element.add` 等）在固件 2.0.7 由 LocalControl 的 `MapLegacyToolCall` 映射到聚合名，**仅 `/api/call` 可用**；它们不再逐个注册为可见 MCP 工具。`/mcp`（JSON-RPC）端点只暴露聚合名（`AddTool`）。新代码统一使用聚合名。
+`reorder` takes comma-separated short IDs in `order`, bottom to top. In 2.5.2.1
+**canvas reorder refreshes unconditionally**, ignoring `refresh:false`; custom
+page reorder changes order without presenting it. For predictable batches, add
+elements in desired z order.
 
-## E-Paper Pages
+Canvas `refresh` invokes `ShowCanvasPage` and full refresh, but does not reset the
+home timer in this version. The builder uses one final `fridge.pagemanager` call
+for consistent home-return behavior on every page.
 
-| target_page | Name | Content |
-|-------------|------|---------|
-| 1 | CHAT | Status bar + chat (auto-switched on config/startup — has connection hints) |
-| 2 | FRIDGE_STATS | Clock + fridge stats |
-| 3 | FOOD_LIST | Item list (max 4 rows) |
-| 4 | RECIPE | AI recipe |
-| 5 | HOME_PIC | Memorial image |
-| 6 | CANVAS | Free-form canvas (Agent-controlled) |
-| 7-15 | CUSTOM | User-created pages with static + dynamic elements |
+## Fridge tools
 
-**Auto-switch on config/startup**: `SetDeviceState(kDeviceStateStarting)` and
-`kDeviceStateWifiConfiguring` now call `display_epaper->SetPage(CHAT_PAGE)` so
-the user always sees connection hints during startup and WiFi config mode. See
-`references/firmware-development.md` § Device State & E-Paper Page Auto-Switch for
-the critical timing constraint (no `audio_service_` calls in early states).
+| Tool | Main arguments |
+|---|---|
+| `fridge.item.get` | `item_id` |
+| `fridge.item.add` | `name,category,quantity,unit,expire_time`; optional `storage_state` |
+| `fridge.item.update` | `item_id,name` and changed fields |
+| `fridge.item.remove` | `item_id` |
+| `fridge.item.clear_all` | `{}`; deletes inventory, unrelated to clearing a display |
+| `fridge.item.list` | optional `category,limit,sort_by,order` |
+| `fridge.stats.summary` | `{}` |
+| `fridge.stats.query` | optional `category,filter:all|expired|expiring_soon,expiring_days` |
+| `fridge.recipe.recommend` | `recommendation_mode,dish_name,required_ingredients`; optional `summary,extra_ingredients,cooking_time,switch_page` |
 
-## Canvas API (Page 6)
+`expire_time`: `YYYY-MM-DD HH:MM:SS`. Categories:
+`vegetable,fruit,meat,egg,dairy,cooked,seasoning,beverage,quick,other`.
+Storage: `Fresh` / `Frozen`. `fridge_only` rejects missing ingredients;
+`mixed_purchase` includes missing ingredients. Inspect `missing_ingredients` and
+`current_fridge_items` in the result. Query current `tools/list` for uncommon
+fields instead of guessing.
 
-The canvas page lets the Agent freely place text, lines, and rectangles on the
-296×128 e-paper display. All operations go through `fridge.canvas.control` with an `action` parameter.
+## Bitmap contract
 
-| action | Description | Key Args |
-|--------|-------------|----------|
-| `add_text` | Place text | `id`, `text`, `x`, `y`, `font_size`(12/16), `align`(left/center/right), `max_width`(opt, default 276), `refresh` |
-| `add_rect` | Place rectangle | `id`, `x`, `y`, `w`, `h`, `filled`, `refresh` |
-| `add_line` | Place line | `id`, `x1`, `y1`, `x2`, `y2`, `width`, `refresh` |
-| `add_image` | Load image from LittleFS storage | `id`, `name`, `x`, `y`, `w`, `h`, `refresh` |
-| `list` | List all elements | — |
-| `remove` | Remove single element | `id` |
-| `clear` | Clear all elements | — |
-| `refresh` | Force display refresh | — |
+Raw row-padded 1-bpp, MSB first, **1=black, 0=white**.
+Bytes = `ceil(w/8) × h`; 24×24 = 72 bytes, 296×128 = 4736 bytes. Pad unused row
+bits with zero. Transparency is white. `w/h` are bitmap dimensions, not scaling.
+Pre-render/resize on the host. Built-in `pixart` is exactly 24×24.
 
-### Canvas Workflow
-
-```bash
-# 1. Switch to canvas page
-curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.pagemanager","args":{"target_page":6}}'
-
-# 2. Clear old content
-curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.control","args":{"action":"clear","refresh":false}}'
-
-# 3. Batch-add elements
-curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.control","args":{"action":"add_text","id":"title","text":"Hello","x":10,"y":5,"font_size":16,"refresh":false}}'
-curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.control","args":{"action":"add_line","id":"div","x1":10,"y1":28,"x2":286,"y2":28,"width":2,"refresh":false}}'
-
-# 4. Flush to screen
-curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.control","args":{"action":"refresh"}}'
-```
-
-## Canvas Image Storage (LittleFS)
-
-Images are persisted in a 2MB LittleFS partition (`canvas_data`) on the device
-flash. Upload via HTTP, then reference by name in `canvas.add_image`.
-
-```bash
-# Upload a row-padded 1-bpp raw bitmap
-curl -X POST "http://<IP>:8080/api/canvas_image?name=my_image" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @image.bin
-
-# List stored images
-curl http://<IP>:8080/api/canvas_image
-# → [{"name":"my_image","size":512}]
-
-# Display the image on canvas
-curl -X POST http://<IP>:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.canvas.control","args":{"action":"add_image","id":"img1","name":"my_image","x":100,"y":30,"w":64,"h":64}}'
-```
-
-### Image Format
-
-1-bpp (black/white) raw bitmap:
-- MSB first (bit 7 = leftmost pixel)
-- Each row padded to byte boundary
-- 1 = black, 0 = white (GxEPD2 `drawBitmap()` treats bit=1 as foreground=black)
-- Size = `ceil(w/8) * h` bytes
-- For a 64×64 image: 512 bytes
-- For full screen (296×128): `ceil(296/8) * 128 = 37 * 128 = 4736` bytes
-
-**Key detail**: current firmware reads `ceil(w/8) * h` bytes. Each row starts
-on a byte boundary. For non-multiple-of-8 widths, pad the last byte's unused
-bits to white (0).
-
-### Bitmap Color Inversion Pitfall
-
-The GxEPD2 `drawBitmap()` function treats bit=1 as the **foreground color**
-(black on a B&W display) and bit=0 as the **background color** (white). So if
-your `pixelsTo1bpp()` function maps luminance≥128 (white pixels) to bit=1,
-the screen will show them as **black** — the entire image is inverted.
-
-**Fix**: invert the bit assignment: `var bitVal = (lum >= 128) ? 0 : 1;` —
-dark pixels (lum<128) get bit=1 (foreground=black), light pixels get bit=0
-(background=white).
-
-### Row padding and older firmware
-
-Current firmware uses `CanvasBitmapBytes(w, h) = ceil(w/8) * h`, so widths that
-are not multiples of eight are supported. Do not pack rows as one continuous
-bit stream. Older firmware may have used `w*h/8`; prefer multiples of eight
-only when compatibility with such firmware is required.
-
-### Browser → Canvas Bitmap Workflow
-
-For freehand drawing / image insertion from web:
-1. Draw on an HTML `<canvas>` element (296×128)
-2. Get pixel data: `ctx.getImageData(0, 0, 296, 128).data` (RGBA array)
-3. Binarize: for each pixel, luminance = `0.299*R + 0.587*G + 0.114*B`;
-   threshold at 128 → black (bit=1) / white (bit=0)
-4. Pack into 1-bpp bitmap: 8 pixels per byte, MSB first, row-padded to byte
-   boundary → `Uint8Array(ceil(296/8) * 128) = 37 * 128 = 4736 bytes`
-5. Upload: `fetch('/xiaozhi-api/api/canvas_image?name=freehand_N', { method: 'POST', body: bitmapBuffer })`
-6. Place on canvas: `api.callTool('fridge.canvas.control', { action: 'add_image', id: 'img1', name: 'freehand_N', x: 0, y: 0, w: 296, h: 128, refresh: true })`
-
-See `references/web-console.md` and `references/canvas-web-interaction.md` for the full
-browser-side implementation.
-
-## Canvas Coordinate System
-
-- Screen: 296 (W) × 128 (H) pixels
-- Origin: top-left (0,0)
-- Safe area: x ∈ [5, 291], y ∈ [5, 123]
-
-## Recipe Recommendation Response
-
-`fridge.recipe.recommend` returns these fields in the `text` JSON:
-
-| Field | Meaning |
-|-------|---------|
-| `dish_name` | Recommended dish name |
-| `summary` | Brief recommendation reason (new in v1.6.0+) |
-| `cooking_time` | e.g. "20分钟" |
-| `required_ingredients` | Comma-separated list the dish needs |
-| `extra_ingredients` | Auto-filled missing ingredients (in `mixed_purchase` mode) |
-| `missing_ingredients` | What's missing from fridge (empty if all present) |
-| `recipe_text` | Formatted recipe text displayed on e-paper |
-| `current_fridge_items` | Array of current fridge items |
-| `recommendation_mode` | `fridge_only` or `mixed_purchase` |
-
-**Behavior**: `fridge_only` rejects if any ingredient is missing (returns error
-with list). `mixed_purchase` auto-fills `extra_ingredients` with what needs to
-be bought. The response also includes a `missing_ingredients` field.
-
-## One-Shot Recipe: Manage Fridge + Recommend Meal
-
-```bash
-IP=$(python3 scripts/xiaozhi_discovery.py)
-# 1. Switch to food list page
-curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.pagemanager","args":{"target_page":3}}'
-# 2. Check current stats
-curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.stats.summary","args":{}}'
-# 3. Add an item (expire_time = now + N days)
-curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.item.add","args":{"name":"鸡蛋","category":"egg","quantity":1,"unit":"盒","expire_time":"2026-08-04 09:48:15"}}'
-# 4. Switch to recipe page and recommend
-curl -s -X POST http://$IP:8080/api/call -H "Content-Type: application/json" \
-  -d '{"tool":"fridge.recipe.recommend","args":{"dish_name":"鸡蛋炒饭","required_ingredients":"鸡蛋","recommendation_mode":"fridge_only"}}'
-# 5. IMPORTANT: cross-check required_ingredients vs current_fridge_items yourself
-#    (Only needed for old firmware. New firmware auto-rejects in fridge_only mode.)
-```
+Images live in LittleFS. Use safe basenames (letters, digits, `_`, `.`);
+Paths, `..`, hyphens (firmware rewrites them) and `.json` names (reserved for
+layouts/registry) are rejected by the client. The file-list endpoint also includes
+these metadata files; they are not bitmap assets. Do not overwrite a name referenced by another page
+unless changing that shared asset is intended.

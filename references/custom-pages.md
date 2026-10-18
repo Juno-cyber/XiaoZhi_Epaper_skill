@@ -1,135 +1,69 @@
-# Custom Pages and Dynamic Elements
+# Custom pages and dynamic elements
 
-Pages 7–15 are persistent user pages. Page 6 is a separate compatibility canvas;
-do not reuse its action names for custom pages.
+Firmware 2.5.2.1; aggregate tools are compatible with the 2.0.7+ contract.
+Pages 7–15 persist user layouts. Page 6 is a separate canvas.
 
-## Current Contracts
+## Create, populate, display
 
-Firmware 2.0.7 exposes aggregate MCP tools:
+1. `xiaozhi.py IP pages` lists built-in and custom pages. Do not assume 7 is free.
+2. Call `fridge.page.control` with `{"action":"create","name":"Weather"}`.
+   Read the allocated page from the response.
+3. Build that page with a validated `.layout` file ending in `refresh`.
+   The builder checks existence before clearing and reads back before display.
 
-| Operation | Tool | Important args |
-|---|---|---|
-| Create/list/rename/delete/clear | `fridge.page.control` | `action`, `page`, `name`, `refresh` |
-| Add/update/remove/list elements | `fridge.page.element.control` | `action`, `page`, `id`, element fields |
-| Show a page | `fridge.pagemanager` | `target_page` |
-
-Fine-grained names such as `fridge.page.create` are compatibility aliases in
-`/api/call`; they are not individually exposed by `/mcp`. New integrations
-should use the aggregate names.
-
-Create and populate a page serially:
+A custom text add has flat arguments:
 
 ```json
-{"tool":"fridge.page.control","args":{"action":"create","name":"Weather"}}
-{"tool":"fridge.page.element.control","args":{"action":"add","page":7,"id":"title","type":"text","text":"Weather","x":10,"y":4,"font_size":16,"align":"center","refresh":false}}
-{"tool":"fridge.page.element.control","args":{"action":"add","page":7,"id":"sep","type":"line","x":10,"y":24,"x1":10,"y1":24,"x2":285,"y2":24,"width":1,"refresh":false}}
-{"tool":"fridge.pagemanager","args":{"target_page":7}}
+{"action":"add","page":7,"id":"title","type":"text","text":"天气","x":10,"y":4,"font_size":16,"align":"center","refresh":false}
 ```
 
-Line elements must include compatibility fields `x=x1,y=y1` as well as their
-real coordinates. Hard-coding compatibility fields to `(0,0)` is unsafe across
-firmware variants and makes malformed horizontal-line requests harder to spot.
-Add all elements with `refresh=false`, verify the stored endpoints, then
-switch/refresh once to reduce timeouts and e-paper wear.
+Use `fridge.page.element.control` for elements, `fridge.page.control` for page
+create/list/rename/delete/clear. Delete switches to page 5. Exact contracts,
+line compatibility fields and reorder side effects: [API](api-reference.md).
 
-## Geometry and Fonts
+## Layout and persistence
 
-- Screen bounds are x=0–295 and y=0–127. Rectangles and images must fit fully.
-- Text supports font 12 or 16. A device-side `clock` also supports font 56.
-- Custom-page text uses a fixed 276px alignment/wrapping region. Firmware ignores
-  `max_width`; omit it. Use x=10 for full-screen center or right alignment.
-- Keep at most 30 elements, use unique stable IDs, and bound text to 1024 UTF-8
-  bytes. The validated builder enforces these constraints before mutation.
+Fonts 12/16, plus 56 for device clocks. Text alignment uses a fixed 276px region;
+`max_width` is ignored for custom pages. Use x=10 for full-screen center/right.
+Builder caps layouts at 30 elements with unique IDs. The order of add commands
+is the draw order. `update` changes text only; add with the same ID replaces geometry.
 
-## Persistence
+LittleFS: `/canvas/custom_pages.json`, `/canvas/page_N.json` for custom pages;
+`/canvas/layout.json` for page 6. Operations save layouts; successful readback
+verifies live state, not reboot persistence. Backup before replacing a page;
+see [failure recovery](pitfalls.md). Do not clear just to update one value.
 
-LittleFS stores the page registry and layouts under `/canvas/`:
+## Device-side clock/date
 
-```text
-/canvas/custom_pages.json
-/canvas/page_7.json
-/canvas/page_8.json
-/canvas/layout.json       # page 6, separate format/lifecycle
-```
-
-The firmware prefixes in-memory label IDs by page so equal user IDs on different
-pages do not collide. Add/remove/update operations persist the affected layout.
-After firmware changes, verify both the live element list and a reboot reload.
-
-Before rebuilding a page, validate the whole desired layout. Do not clear first
-and discover a bad element later. `scripts/quick_page_builder.py --check` performs
-an offline preflight, and its live mode checks that the custom page exists before
-clearing it.
-
-## Dynamic Values
-
-There are two distinct patterns.
-
-### Device-side dynamics
-
-Firmware 2.0.7 accepts exactly:
-
-| `dynamic_type` | Display value | Valid fonts |
+| `dynamic_type` | Value | Fonts |
 |---|---|---|
 | `clock` | `HH:MM` | 12, 16, 56 |
 | `date` | `YYYY-MM-DD 周X` | 12, 16 |
 
-```json
-{"tool":"fridge.page.element.control","args":{"action":"add","page":7,"id":"clock","type":"text","text":"--:--","x":10,"y":4,"font_size":56,"align":"center","dynamic":true,"dynamic_type":"clock","refresh":true}}
+```text
+clear
+text id=clock text="--:--" x=10 y=8 font_size=56 align=center dynamic=true dynamic_type=clock
+text id=date text="日期" x=10 y=88 font_size=12 align=center dynamic=true dynamic_type=date
+refresh
 ```
 
-The type is persisted as `dtype`. The periodic update compares the new rendered
-value with the previous snapshot, so an unchanged minute/date does not refresh
-the panel. Unsupported types must be rejected rather than silently displayed as
-static placeholders.
+Dynamic type is returned as `dtype`; initial `text` is ignored and the device
+computes the value. Time must be synchronized. Unchanged values do not cause
+periodic refreshes. A clock tick during a staged batch can independently queue
+a frame. Do not use a text-only update on a device clock: the handler replaces
+its text callback; re-add its dynamic definition instead.
 
-### Agent-pushed dynamics
+## Agent-provided values
 
-For weather, counters, system metrics, prices, or countdowns, add a stable text
-element with `dynamic=true` but no `dynamic_type`. An Agent or cron task computes
-the final string and updates it:
+Weather, counters, metrics and prices are external values, not firmware dynamic
+types. Add an ordinary text element, fetch/validate data first, then update its
+stable ID. The legacy `dynamic:true` flag alone does not create an updater.
 
 ```json
-{"tool":"fridge.page.element.control","args":{"action":"update","page":7,"id":"weather","text":"晴 28C","refresh":true}}
+{"action":"update","page":7,"id":"weather","text":"晴 28C","refresh":true}
 ```
 
-Fetch external data before contacting the device. If fetching fails, leave the
-old display intact. Record history only after the device confirms success.
-
-## Page 6 vs Custom Pages
-
-| Operation | Page 6 | Pages 7–15 |
-|---|---|---|
-| Add text | `canvas.control action=add_text` | `page.element.control action=add,type=text` |
-| Add rect | `canvas.control action=add_rect` | `page.element.control action=add,type=rect` |
-| Add line | `canvas.control action=add_line` | `page.element.control action=add,type=line` |
-| Add image | `canvas.control action=add_image` | `page.element.control action=add,type=image` |
-| Clear | `canvas.control action=clear` | `page.control action=clear,page=N` |
-| List | `canvas.control action=list` | `page.element.control action=list,page=N` |
-
-## Failure and Adversarial Checks
-
-- Reject page numbers outside 7–15 and refuse changes to built-in pages.
-- Reject unknown fields, duplicate IDs, unsupported dynamic types, non-integer or
-  off-screen geometry, unsafe image names, control characters, and oversized input.
-- Confirm GET `/` identifies a xiaozhi board before mutation.
-- Treat outer errors, `result.isError`, inner errors, malformed JSON, and timeouts
-  as failures even when HTTP status is 200.
-- Do not follow HTTP redirects from the validated device address; a redirect can
-  otherwise escape the trusted-LAN boundary.
-- Do not automatically retry a timed-out mutation. List current state first; the
-  request may have succeeded before the response was lost.
-- The builder snapshots and validates the existing element list before `clear`.
-  On a later failure it clears partial state and restores the snapshot without a
-  display refresh. If either snapshot or rollback is unsafe, it stops explicitly.
-- Use serial requests. Concurrent display operations can exhaust ESP32 resources
-  or race persistence.
-- The LocalControl service has no authentication. Keep it and the web proxy on a
-  trusted LAN or loopback; never publish them directly.
-
-## Verification
-
-Without a device, run the builder tests and the local `Litsea_Top` mock/proxy
-integration suite. With a device, test create, add, update, list, remove, clear,
-delete, an invalid built-in-page mutation, the 30-element limit, and persistence
-after reboot.
+For multiple values use `refresh:false` on every update, read back and issue
+one `fridge.pagemanager`. Do not rewrite or refresh unchanged external values.
+A scheduled job is optional and belongs to the selected Agent runtime, not the
+device; [Hermes-specific workflow](hermes-workflow.md) is only for Hermes tasks.

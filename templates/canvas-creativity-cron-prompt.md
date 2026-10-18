@@ -1,15 +1,13 @@
 # 画布自动刷新 Cron Prompt 模板
 
-> 适用：xiaozhi 墨水屏设备（固件 2.0.7），每 30 分钟自动刷新 canvas 画布。
+> 适用：xiaozhi 墨水屏设备（固件 2.5.2.1，兼容 2.0.7+），每 30 分钟自动刷新 canvas 画布。
 > 用法：让 cronjob 引用本文件；设备地址在运行时自动发现，不在模板中保存私有配置。
 > 关联：`references/canvas-creativity.md`（三层防重复机制）、`references/hermes-workflow.md`（cron 模式说明）。
 >
-> ⚠️ 多机一致性设计（2026-08-05）：本文件是 cron 行为规则的**唯一来源**（已入库 git）。
-> cron job 的 prompt **不要**粘贴本文件全文；先写可视化元数据，再写一行引用：
->   `[XIAOZHI_CRON_META v1 page=6 mode=canvas-refresh]`
+> 本文件统一维护定时刷新规则。cron job 的 prompt 只写一行引用：
 >   「严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md
 >    中『Prompt 正文』的全部指令。文件缺失或无法读取时直接报错结束，禁止自行发挥。」
-> 这样改规则只需改本文件并 git push，所有机器下次 cron 自动生效，cron job 本身零漂移。
+> 更新本文件并部署到运行任务的机器后，下次任务会读取新规则。
 
 ## 创建命令
 
@@ -19,7 +17,7 @@
 #   deliver: "local"
 #   enabled_toolsets: ["terminal", "file"]
 #   skills: ["xiaozhi-control"]
-#   prompt: <元数据标记 + 一行引用指令，见上方多机一致性设计>
+#   prompt: <一行引用指令，见上方说明>
 ```
 
 ## Prompt 正文
@@ -28,7 +26,7 @@
 ## 任务：刷新 xiaozhi ESP32 墨水屏画布
 
 设备地址必须在每次运行时通过 `python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/xiaozhi_discovery.py` 发现；禁止写死 IP。随后 GET / 确认 `status=ok` 和预期板型，再进行任何写操作。
-固件 2.0.7 推荐聚合名；先从健康响应读取版本，不要假定版本。
+固件 2.5.2.1 使用聚合名；先从健康响应读取版本，不要假定版本。
 
 ### 时间窗口判断
 - 获取当前时间：`date '+%H%M'`，按四位 HHMM 比较
@@ -91,8 +89,8 @@ heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee
 5. 生成完整 builder DSL，必须以 `clear` 开始、`refresh` 结束；水平分割线必须使用下述 `hline` 格式
 6. 先执行 `quick_page_builder.py "$IP" 6 <layout> --check` 对整份布局做离线校验；任何错误都应停止，不能清屏
 7. 校验通过后执行同一份 DSL。必须由 builder 串行 clear/add/回读校验/refresh，不得绕过 builder 自行调用 add_line；每个 text 的 `text` 字段直接填入第 3 步确定的文案（含脚注 source 原串），不得二次改动
-8. 逐条检查内外层错误；builder 会在刷新前回读线条端点，任一坐标不一致或请求失败都以失败状态结束
-9. 仅在刷新成功后追加历史到 `~/.hermes/xiaozhi_canvas/history.jsonl`（一行JSON：ts, slot, intent, layout, icons, text）
+8. 逐条检查内外层错误；builder 会在显示前回读全部写入元素，任一坐标不一致或请求失败都以失败状态结束
+9. 仅在读回验证和显示请求成功后追加历史（不等同于面板完成）到 `~/.hermes/xiaozhi_canvas/history.jsonl`（一行JSON：ts, slot, intent, layout, icons, text）
 10. 输出一句话摘要以供记录（如"刷新完成：陪伴·A版式·太阳图标"）
 
 ### 布局约束

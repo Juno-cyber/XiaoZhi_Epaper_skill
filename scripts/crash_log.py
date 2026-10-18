@@ -8,10 +8,12 @@ import time
 
 def make_parser():
     parser = argparse.ArgumentParser(description="Capture an ESP32 serial crash log")
-    parser.add_argument("port", nargs="?", default="/dev/ttyUSB0")
+    parser.add_argument("port", help="identified serial port, e.g. /dev/ttyUSB0, /dev/cu.usbserial, COM3")
     parser.add_argument("duration", nargs="?", type=float, default=20)
     parser.add_argument("--baud", type=int, default=115200)
-    parser.add_argument("--no-reset", action="store_true", help="do not toggle DTR/RTS")
+    reset = parser.add_mutually_exclusive_group()
+    reset.add_argument("--reset", action="store_true", help="explicitly toggle DTR/RTS to capture boot")
+    reset.add_argument("--no-reset", action="store_true", help="compatibility option; no reset is now the default")
     return parser
 
 
@@ -26,9 +28,14 @@ def main(argv=None):
     except ImportError as exc:
         raise RuntimeError("pyserial is required; install requirements-optional.txt") from exc
 
-    connection = serial.Serial(args.port, args.baud, timeout=0.3)
+    # Configure line states before opening; Serial(port) would assert them first.
+    connection = serial.Serial(port=None, baudrate=args.baud, timeout=0.3)
+    connection.dtr = False
+    connection.rts = False
+    connection.port = args.port
+    connection.open()
     try:
-        if not args.no_reset:
+        if args.reset:
             connection.dtr = True
             connection.rts = True
             time.sleep(0.1)
@@ -36,7 +43,7 @@ def main(argv=None):
             connection.rts = False
             time.sleep(0.05)
 
-        print(f"=== 抓取启动日志 ({args.duration:g}秒) ===")
+        print(f"=== Serial capture ({args.duration:g}s, reset={args.reset}) ===")
         deadline = time.monotonic() + args.duration
         while time.monotonic() < deadline:
             data = connection.read(connection.in_waiting or 1)
