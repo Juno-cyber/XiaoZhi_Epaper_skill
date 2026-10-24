@@ -1,6 +1,6 @@
 # 画布自动刷新 Cron Prompt 模板
 
-> 适用：xiaozhi 墨水屏设备（固件 2.5.2.1，兼容 2.0.7+），每 30 分钟自动刷新 canvas 画布。
+> 适用：xiaozhi 墨水屏设备（固件 2.5.2.4，已有自定义页面），每 30 分钟自动刷新 canvas 画布。
 > 用法：让 cronjob 引用本文件；设备地址在运行时自动发现，不在模板中保存私有配置。
 > 关联：`references/canvas-creativity.md`（三层防重复机制）、`references/hermes-workflow.md`（cron 模式说明）。
 >
@@ -26,7 +26,7 @@
 ## 任务：刷新 xiaozhi ESP32 墨水屏画布
 
 设备地址必须在每次运行时通过 `python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/xiaozhi_discovery.py` 发现；禁止写死 IP。随后 GET / 确认 `status=ok` 和预期板型，再进行任何写操作。
-固件 2.5.2.1 使用聚合名；先从健康响应读取版本，不要假定版本。
+固件 2.5.2.4 使用页面聚合接口；先从健康响应读取版本，再列出页面确认目标为 builtin:false。第 6 页也是自定义页，不能假定它始终存在。
 
 ### 时间窗口判断
 - 获取当前时间：`date '+%H%M'`，按四位 HHMM 比较

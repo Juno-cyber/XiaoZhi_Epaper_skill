@@ -26,14 +26,14 @@ class DisplayTests(unittest.TestCase):
         builder.build_page(client, 6, 'switch 6\nclear\ntext id=t text=hello x=16 y=16\nrefresh', output=lambda _: None)
         presentations = [(i, args) for i, (tool, args) in enumerate(client.calls) if tool == "fridge.pagemanager"]
         self.assertEqual(presentations, [(len(client.calls)-1, {"target_page": 6})])
-        self.assertEqual(client.calls[-2], ("fridge.canvas.control", {"action": "list"}))
-        self.assertTrue(all(args.get("refresh") is False for _, args in client.calls if args.get("action") in ("clear", "add_text")))
+        self.assertEqual(client.calls[-2], ("fridge.page.element.control", {"action": "list", "page": 6}))
+        self.assertTrue(all(args.get("refresh") is False for _, args in client.calls if args.get("action") in ("clear", "add")))
 
     def test_no_presentation_when_staging_only(self):
         client = FakeClient()
         builder.build_page(client, 6, 'text id=t text=hello x=16 y=16', output=lambda _: None)
         self.assertFalse(any(tool == "fridge.pagemanager" for tool, _ in client.calls))
-        self.assertEqual(client.calls[-1][1], {"action": "list"})
+        self.assertEqual(client.calls[-1][1], {"action": "list", "page": 6})
 
     def test_mismatching_switch_rejected_before_network(self):
         client = FakeClient()
@@ -45,7 +45,7 @@ class DisplayTests(unittest.TestCase):
         class CorruptClient(FakeClient):
             def call(self, tool, args):
                 result = super().call(tool, args)
-                if args.get("id") == "new" and args.get("action") == "add_text":
+                if args.get("id") == "new" and args.get("action") == "add":
                     self.elements[-1]["text"] = "truncated"
                 return result
         client = CorruptClient()
@@ -60,13 +60,13 @@ class DisplayTests(unittest.TestCase):
         class TimeoutClient(FakeClient):
             def call(self, tool, args):
                 result = super().call(tool, args)
-                if args.get("action") == "add_text":
+                if args.get("action") == "add":
                     raise builder.AmbiguousMutationError("response lost after write")
                 return result
         client = TimeoutClient()
         with self.assertRaises(builder.AmbiguousMutationError):
             builder.build_page(client, 6, 'clear\ntext id=t text=hello x=8 y=8\nrefresh', output=lambda _: None)
-        self.assertEqual([args.get("action") for _, args in client.calls], ["list", "clear", "add_text"])
+        self.assertEqual([args.get("action") for _, args in client.calls], ["list", "list", "clear", "add"])
         self.assertEqual(client.elements[0]["text"], "hello")
 
     def test_backup_survives_ambiguous_clear(self):
@@ -101,7 +101,7 @@ class DisplayTests(unittest.TestCase):
         client.images = [{"name": "art", "size": 72}]
         with self.assertRaisesRegex(builder.BuildError, "size mismatch"):
             builder.build_page(client, 6, 'clear\nimage id=i name=art x=8 y=8 w=32 h=32\nrefresh')
-        self.assertEqual(client.calls, [])
+        self.assertEqual(client.calls, [("fridge.page.control", {"action": "list"})])
 
     def test_text_and_ids_preserve_numeric_and_boolean_strings(self):
         for value in ("123", "true", "false"):
@@ -221,10 +221,11 @@ class ControlCliTests(unittest.TestCase):
 
     def test_disable_home_return_preserves_zero(self):
         with mock.patch.object(xiaozhi, "DeviceClient") as client, contextlib.redirect_stdout(io.StringIO()):
+            client.return_value.call.return_value = [{"page":5,"builtin":False}]
             client.return_value.http_json.return_value = {"status":"ok","page":5,"timeout_min":0}
             xiaozhi.main(["192.168.1.8","home","--page","5","--timeout-min","0"])
             client.return_value.http_json.assert_called_once_with("/api/home_page", {"page":5,"timeout_min":0})
-            client.return_value.call.assert_not_called()
+            client.return_value.call.assert_called_once_with("fridge.page.control", {"action":"list"})
 
     def test_mac_mismatch_prevents_write(self):
         with mock.patch.object(xiaozhi, "DeviceClient") as client:

@@ -1,9 +1,9 @@
 ---
 name: xiaozhi-control
-description: Discover and control XiaoZhi e-paper devices on a trusted LAN, including pages, text, images, fridge data and home-page settings. Use for device operation over local HTTP, not cloud/MQTT control.
+description: Discover and control XiaoZhi e-paper devices on a trusted LAN, including pages, text, images, voice-server URL and home-page settings. Use for device operation over local HTTP, not cloud/MQTT control.
 license: MIT
 metadata:
-  version: 3.0.0
+  version: 3.1.0
   author: Juno-cyber
   platforms: [linux, macos, windows]
   prerequisites:
@@ -18,7 +18,7 @@ metadata:
 
 Operate from this skill directory. Core scripts use Python 3.10+ standard library;
 on Windows replace `python3` with `py -3 -X utf8`. No curl, Bash, SDK or browser
-is needed for normal control. Current reference: firmware **2.5.2.1**, 296×128.
+is needed for normal control. Current reference: firmware **2.5.2.4**, 296×128.
 
 ## Connect, then choose one path
 
@@ -36,22 +36,25 @@ A cached IP can be reassigned: confirm `GET /` identity before every write sessi
 
 ```bash
 python3 scripts/xiaozhi.py DEVICE_IP pages
-python3 scripts/xiaozhi.py DEVICE_IP elements 6
-python3 scripts/xiaozhi.py DEVICE_IP show 6
+python3 scripts/xiaozhi.py DEVICE_IP elements 2
+python3 scripts/xiaozhi.py DEVICE_IP show 2
 python3 scripts/xiaozhi.py DEVICE_IP home
+python3 scripts/xiaozhi.py DEVICE_IP voice
 ```
 
-For home-page settings, rename, raw tool calls or fridge data, read
+For home-page settings, rename, raw tool calls or voice URL configuration, read
 [api-reference.md](references/api-reference.md). CLI output is decoded JSON;
 errors exit nonzero. HTTP success alone does not prove tool success.
 
 **Build a layout:** write a UTF-8 `.layout` file and use the builder:
 
 ```bash
-python3 scripts/quick_page_builder.py DEVICE_IP 6 templates/hello.layout --check
-python3 scripts/quick_page_builder.py DEVICE_IP 6 templates/hello.layout --backup before.json
+python3 scripts/quick_page_builder.py DEVICE_IP PAGE_ID templates/hello.layout --check
+python3 scripts/quick_page_builder.py DEVICE_IP PAGE_ID templates/hello.layout --backup before.json
 ```
 
+Use the allocated `page` from `fridge.page.control action:create` for `PAGE_ID`,
+or a listed `builtin:false` page the user wants to replace. Never assume page 6 exists.
 Use `clear`, then elements, then one `refresh`. The builder validates everything,
 snapshots the old page, batches with `refresh=false`, reads back all written
 elements, then submits one `fridge.pagemanager` call. Legacy `switch N` is deferred
@@ -70,13 +73,16 @@ and merged into that final call; it must target the page being built. With neith
   for the same page, requests a full refresh. HTTP acknowledgment and layout
   readback do **not** prove physical panel completion. See
   [pitfalls.md](references/pitfalls.md) for double-flash diagnosis.
-- Pages: 1 chat, 2 fridge stats, 3 food list, 4 recipe, 5 home image,
-  6 canvas, 7–15 custom. List/create custom pages before writing them.
+- Page 1 is read-only chat. Existing pages 2–15 are editable custom pages,
+  including migrated page 6. Default page 2 is “时间显示” (time/date/image).
+  Always list pages and use `builtin:false`; create missing pages first.
+  Fridge inventory/stats/recipes and love/memorial counters are suspended.
+  The `fridge.page.*` prefix remains the display API, not active fridge business.
 - Keep important content within x=5–291, y=2–126. Fonts: 12/16; custom `clock`
   also supports 56. At most 30 elements per layout. Built-in pixel art is 24×24;
   image `w/h` describes raw storage and does not resize it.
-- For centered/right text use x=10. Canvas permits `max_width`; custom pages
-  fix it at 276px. Prefer `hline` for separators. Avoid unsupported `·`, `・`, `—`.
+- For full-width centered/right text use x=10 and `max_width=276`. All custom
+  pages accept `max_width`; retain it when backing up or restoring layouts. Prefer `hline` for separators. Avoid unsupported `·`, `・`, `—`.
 - Device HTTP :8080 and development proxies belong on a trusted LAN/loopback.
   Do not expose them to the public internet.
 

@@ -32,7 +32,7 @@ but this is not a guarantee that redundant requests will collapse.
 - Use clear/add with explicit `refresh:false`, read back, then **one** final
   `fridge.pagemanager`. Do not switch before writing. The builder defers old
   `switch N` commands and merges them with final `refresh`.
-- Canvas `reorder` refreshes regardless of its refresh flag (custom-page reorder
+- Legacy canvas `reorder` refreshes regardless of its refresh flag (custom-page reorder
   does not). Prefer adding
   in desired z order. A create/list/readback operation is not a reason to refresh.
 - A clock/date tick, voice state transition, a different web/Agent writer, or
@@ -49,7 +49,7 @@ A single successful HTTP response cannot establish physical completion.
 
 The skill can eliminate duplicate requests it sends. Strict atomic batches,
 refresh-completion telemetry and a same-page partial-refresh API would require
-firmware changes; do not claim they exist in 2.5.2.1.
+firmware changes; do not claim they exist in 2.5.2.4.
 
 ## Failed / partial writes
 

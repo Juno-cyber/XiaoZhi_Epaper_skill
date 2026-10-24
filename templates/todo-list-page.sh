@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a validated todo layout on an existing custom page (7-15).
+# Build a validated todo layout on an existing custom page (2-15).
 set -euo pipefail
 
 IP="${1:?usage: todo-list-page.sh <device-host> <page> [item1] [item2] [item3]}"
@@ -10,8 +10,8 @@ ITEM2="${4:-改论文}"
 ITEM3="${5:-运动小智开发}"
 
 case "$PAGE" in
-  7|8|9|10|11|12|13|14|15) ;;
-  *) echo "ERROR: page must be 7-15" >&2; exit 2 ;;
+  2|3|4|5|6|7|8|9|10|11|12|13|14|15) ;;
+  *) echo "ERROR: page must be 2-15" >&2; exit 2 ;;
 esac
 for value in "$ITEM1" "$ITEM2" "$ITEM3"; do
   case "$value" in

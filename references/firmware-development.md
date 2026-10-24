@@ -2,7 +2,7 @@
 
 Read this only for firmware development or serial diagnosis. Normal LAN control
 needs no SDK, serial port or flashing. Source baseline: `xiaozhi-esp32` commit
-`178aca9` (2026-10-18), version **2.5.2.1**.
+`052d39e` (2026-10-24), version **2.5.2.4**.
 
 ## Find the maintained source
 

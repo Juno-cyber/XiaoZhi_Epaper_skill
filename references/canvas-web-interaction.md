@@ -19,14 +19,15 @@ constraints rather than duplicating JavaScript handlers that can drift.
 
 ## Device synchronization
 
-- Select page 6 canvas vs 7–15 custom contracts explicitly. Use the MCP element
+- Use the custom-page contract for all existing pages 2–15 (including 6).
+  Page 1 is read-only. Use the MCP element
   list for editing and backup; the render-layout endpoint uses a different line
   coordinate convention and internal IDs.
 - Complete layout changes are validated first, then sent serially with all
   element refresh flags false and one final page presentation. An automatic
   per-element refresh mode is unsuitable for batching.
 - Reorder is a firmware side effect: canvas reorder presents immediately;
-  custom-page reorder only changes persisted order in 2.5.2.1.
+  custom-page reorder only changes persisted order in 2.5.2.4.
 - Handle inner MCP errors and unknown outcomes; a timeout is not permission to
   retry a mutation or rebuild a page automatically.
 - Images must be resized/binarized on the host: row-padded 1-bpp, MSB first,

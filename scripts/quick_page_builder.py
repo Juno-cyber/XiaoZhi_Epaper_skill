@@ -147,7 +147,7 @@ class DeviceClient:
 
     def http_json(self, path, body=None):
         """Small direct HTTP configuration/preview endpoints, without retries."""
-        if path not in ("/api/home_page", "/api/device_name") and not (
+        if path not in ("/api/home_page", "/api/device_name", "/api/websocket_url") and not (
                 path.startswith("/api/page_layout?page=") and path.split("=")[-1] in map(str, range(1, 16))):
             raise BuildError("unsupported HTTP configuration/preview path")
         payload = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -355,8 +355,6 @@ def validate_element(command, args, line_number):
             raise BuildError(f"line {line_number}: dynamic must be true or false")
         if "dynamic_type" in args and args["dynamic_type"] not in ("clock", "date"):
             raise BuildError(f"line {line_number}: unsupported dynamic_type")
-        if "dynamic_type" in args and not args.get("dynamic", False):
-            raise BuildError(f"line {line_number}: dynamic_type requires dynamic=true")
 
         text_width = estimate_text_width(args["text"], font_size)
         max_width = args.get("max_width", 276)
@@ -409,8 +407,8 @@ def validate_element(command, args, line_number):
 
 
 def parse_layout(layout_text, page):
-    if page != 6 and not 7 <= page <= 15:
-        raise BuildError("page must be 6 or a custom page from 7 to 15")
+    if not 2 <= page <= 15:
+        raise BuildError("page must be an existing custom page from 2 to 15; chat page 1 is read-only")
     commands = []
     element_ids = set()
     seen_element = False
@@ -460,15 +458,9 @@ def parse_layout(layout_text, page):
             args["y1"] = horizontal_y
             args["y2"] = horizontal_y
             command = "line"
-        if page >= 7 and command == "text" and "max_width" in args:
-            raise BuildError(
-                f"line {line_number}: custom-page firmware ignores max_width; omit it (the region is fixed at 276px)"
-            )
         validate_element(command, args, line_number)
         if args.get("refresh", False):
             raise BuildError(f"line {line_number}: element refresh must be false; use one final refresh command")
-        if page == 6 and ("dynamic" in args or "dynamic_type" in args):
-            raise BuildError(f"line {line_number}: dynamic fields are supported only on custom pages 7-15")
         if args["id"] in element_ids:
             raise BuildError(f"line {line_number}: duplicate element id {args['id']!r}")
         element_ids.add(args["id"])
@@ -519,10 +511,7 @@ RESTORE_FIELDS = {
 
 def snapshot_page(client, page):
     """Read and validate a restorable snapshot before a destructive clear."""
-    if page == 6:
-        elements = client.call("fridge.canvas.control", {"action": "list"})
-    else:
-        elements = client.call("fridge.page.element.control", {"action": "list", "page": page})
+    elements = client.call("fridge.page.element.control", {"action": "list", "page": page})
     if not isinstance(elements, list):
         raise BuildError("cannot safely snapshot page before clear: element list is not an array")
 
@@ -532,11 +521,9 @@ def snapshot_page(client, page):
             raise BuildError(f"cannot safely snapshot page before clear: unsupported element {index}")
         element_type = item["type"]
         args = {key: item[key] for key in RESTORE_FIELDS[element_type] if key in item}
-        if "dtype" in item and "dynamic_type" not in args:
+        if item.get("dtype") and "dynamic_type" not in args:
             args["dynamic_type"] = item["dtype"]
             args["dynamic"] = True
-        if page >= 7:
-            args.pop("max_width", None)
         validate_element(element_type, args, 0)
         snapshot.append((element_type, args))
     return snapshot
@@ -544,22 +531,16 @@ def snapshot_page(client, page):
 
 def restore_page(client, page, snapshot):
     """Best-effort restore of a validated snapshot after a failed rebuild."""
-    if page == 6:
-        client.call("fridge.canvas.control", {"action": "clear", "refresh": False})
-    else:
-        client.call("fridge.page.control", {"action": "clear", "refresh": False, "page": page})
+    client.call("fridge.page.control", {"action": "clear", "refresh": False, "page": page})
     for element_type, source_args in snapshot:
         args = dict(source_args)
         args["refresh"] = False
-        if page == 6:
-            args["action"] = "add_" + element_type
-            client.call("fridge.canvas.control", args)
-        else:
-            args.update({"action": "add", "page": page, "type": element_type})
-            if element_type == "line":
-                args.setdefault("x", args["x1"])
-                args.setdefault("y", args["y1"])
-            client.call("fridge.page.element.control", args)
+        args.update({"action": "add", "page": page, "type": element_type})
+        if element_type == "line":
+            args.setdefault("x", args["x1"])
+            args.setdefault("y", args["y1"])
+        client.call("fridge.page.element.control", args)
+
 
 
 def verify_elements(client, page, commands, exact=False):
@@ -588,10 +569,7 @@ def verify_elements(client, page, commands, exact=False):
         expected.append(args)
     if not expected and not exact:
         return
-    if page == 6:
-        elements = client.call("fridge.canvas.control", {"action": "list"})
-    else:
-        elements = client.call("fridge.page.element.control", {"action": "list", "page": page})
+    elements = client.call("fridge.page.element.control", {"action": "list", "page": page})
     if not isinstance(elements, list):
         raise BuildError("cannot verify elements: element list is not an array")
     actual = {item.get("id"): item for item in elements if isinstance(item, dict)}
@@ -608,16 +586,25 @@ def verify_elements(client, page, commands, exact=False):
                 raise BuildError(f"element {element_id!r} {label}: {key} expected {value!r}, stored {item.get(key)!r}")
 
 
+def require_page(client, page, editable=False):
+    """Use the live registry, never infer editability from an old fixed page map."""
+    if page == 1 and not editable:
+        return {"page": 1, "builtin": True}
+    if not 2 <= page <= 15:
+        raise BuildError("chat page 1 is read-only; custom pages use 2-15")
+    pages = client.call("fridge.page.control", {"action": "list"})
+    entry = next((p for p in pages if isinstance(p, dict) and p.get("page") == page), None) if isinstance(pages, list) else None
+    if entry is None:
+        raise BuildError(f"custom page {page} does not exist; list/create it first")
+    if editable and entry.get("builtin") is not False:
+        raise BuildError(f"page {page} is built-in or lacks editable metadata; firmware 2.5.2.4 is required")
+    return entry
+
+
 def build_page(client, page, layout_text, delay=0.0, output=print, backup_path=None):
     """Validate the entire layout before applying any device mutation."""
     commands = parse_layout(layout_text, page)
-    if page >= 7:
-        pages = client.call("fridge.page.control", {"action": "list"})
-        if not isinstance(pages, list) or page not in {
-            item.get("page") for item in pages if isinstance(item, dict) and isinstance(item.get("page"), int)
-        }:
-            raise BuildError(f"custom page {page} does not exist; create it before building")
-    is_canvas = page == 6
+    require_page(client, page, editable=True)
     has_clear = any(command == "clear" for command, _, _ in commands)
     prepare_images(client, commands)
     snapshot = snapshot_page(client, page) if has_clear else None
@@ -637,18 +624,15 @@ def build_page(client, page, layout_text, delay=0.0, output=print, backup_path=N
     try:
         for command, source_args, line_number in commands:
             if command == "clear":
-                tool = "fridge.canvas.control" if is_canvas else "fridge.page.control"
-                args = {"action": "clear", "refresh": False}
-                if not is_canvas:
-                    args["page"] = page
+                tool = "fridge.page.control"
+                args = {"action": "clear", "refresh": False, "page": page}
                 clear_attempted = True
                 result = client.call(tool, args)
             elif command == "refresh":
                 verify_elements(client, page, commands, exact=has_clear)
                 verified = True
                 presenting = True
-                # SetPage also resets the home-return timer; ShowCanvasPage
-                # (canvas.refresh) does not in firmware 2.5.2.1.
+                # Present once after readback and reset the home-return timer.
                 result = client.call("fridge.pagemanager", {"target_page": page})
             else:
                 args = dict(source_args)
@@ -660,17 +644,11 @@ def build_page(client, page, layout_text, delay=0.0, output=print, backup_path=N
                     args.setdefault("h", 24)
                     args["name"] = art
 
-                if is_canvas:
-                    args["action"] = "add_" + actual_type
-                    result = client.call("fridge.canvas.control", args)
-                else:
-                    args["page"] = page
-                    args["action"] = "add"
-                    args["type"] = actual_type
-                    if actual_type == "line":
-                        args.setdefault("x", args["x1"])
-                        args.setdefault("y", args["y1"])
-                    result = client.call("fridge.page.element.control", args)
+                args.update({"page": page, "action": "add", "type": actual_type})
+                if actual_type == "line":
+                    args.setdefault("x", args["x1"])
+                    args.setdefault("y", args["y1"])
+                result = client.call("fridge.page.element.control", args)
                 element_count += 1
             output(f"line {line_number}: {command} -> {result.get('status', 'ok') if isinstance(result, dict) else 'ok'}")
             if delay:
@@ -695,7 +673,7 @@ def build_page(client, page, layout_text, delay=0.0, output=print, backup_path=N
 def make_parser():
     parser = argparse.ArgumentParser(description="Build a validated xiaozhi e-paper layout")
     parser.add_argument("host", help="private/LAN device IP or hostname (without http://)")
-    parser.add_argument("page", type=int, help="6 for canvas, or 7-15 for a custom page")
+    parser.add_argument("page", type=int, help="existing custom page 2-15; list pages first")
     parser.add_argument("layout", nargs="?", default="-", help="layout file, or - for stdin")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)

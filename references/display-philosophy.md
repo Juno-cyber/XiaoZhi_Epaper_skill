@@ -116,16 +116,13 @@
 
 ## 技术实现
 
-### Canvas API (Page 6)
+### 页面元素 API (已有自定义页 2–15)
 
 屏幕尺寸: 296×128 像素 (W×H)，电子墨水屏。
 
-可用元素类型：
-- `fridge.canvas.add_text` — 文字 (font_size: 12 或 16)
-- `fridge.canvas.add_rect` — 矩形 (filled: true/false)
-- `fridge.canvas.add_line` — 线条
-- `fridge.canvas.add_image` — 图片 (LittleFS 中的 1-bpp bitmap)
-- `fridge.canvas.clear` — 清除 (支持 `id` 参数删除单个元素)
+可用元素类型通过 `fridge.page.element.control` 的 `action:add` 与
+`type:text|rect|line|image` 指定；页面使用已存在的 2–15 页。
+清页用 `fridge.page.control action:clear`，单元素删除用元素接口 `action:remove`。
 
 ### 像素画素材
 
@@ -137,10 +134,10 @@ heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee
 python3 scripts/pixel_art_generator.py --upload <IP>
 ```
 
-### 自定义页面 (Page 7-15)
+### 自定义页面 (Page 2-15)
 
 自定义页面支持持久化布局和动态元素，适合长期固定的内容。
-Canvas (Page 6) 更适合频繁更新的"日记式"内容。
+第 6 页也是自定义页面，需先确认存在。第 2 页默认含时间/日期/图片，未经用户选择不要替换。
 
 ### 设计约束
 
@@ -157,9 +154,9 @@ Canvas (Page 6) 更适合频繁更新的"日记式"内容。
 1. 确定当前情境（时间、近期事件、用户状态）
 2. 回答五个问题
 3. 选择表达形式（文字 + 图标 + 布局）
-4. 用 canvas.clear 清除旧内容 (refresh=false)
+4. 用 page.control action:clear 清除目标自定义页 (refresh=false)
 5. 批量添加新元素 (refresh=false)
-6. 最后单独调用一次 refresh 刷新屏幕
+6. 回读校验后，最后调用一次 fridge.pagemanager 显示目标页
 7. 确认布局：留白足够、视觉简洁、一眼能懂
 ```
 

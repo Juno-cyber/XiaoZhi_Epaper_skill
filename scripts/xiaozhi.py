@@ -4,15 +4,26 @@
 import argparse
 import json
 import sys
+import urllib.parse
 
-from quick_page_builder import BuildError, DeviceClient, DEFAULT_TIMEOUT
+from quick_page_builder import BuildError, DeviceClient, DEFAULT_TIMEOUT, require_page
 
 
 def existing_page(client, page):
-    if page >= 7:
-        pages = client.call("fridge.page.control", {"action": "list"})
-        if not isinstance(pages, list) or not any(isinstance(p, dict) and p.get("page") == page for p in pages):
-            raise BuildError(f"custom page {page} does not exist")
+    return require_page(client, page)
+
+
+def validate_websocket_url(value):
+    if not value or len(value.encode("utf-8")) > 512 or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value) or "#" in value or "\\" in value:
+        raise BuildError("WebSocket URL must be at most 512 UTF-8 bytes, without whitespace, controls or fragments")
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme not in ("ws", "wss") or not parsed.hostname or parsed.username is not None or parsed.password is not None:
+        raise BuildError("use a complete ws:// or wss:// URL without embedded credentials")
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise BuildError("invalid WebSocket port") from exc
+    return value
 
 
 def main(argv=None):
@@ -26,12 +37,14 @@ def main(argv=None):
     sub.add_parser("pages")
     for command in ("elements", "layout", "show"):
         item = sub.add_parser(command)
-        item.add_argument("page", type=int, choices=range(6 if command == "elements" else 1, 16))
+        item.add_argument("page", type=int, choices=range(2 if command == "elements" else 1, 16))
     home = sub.add_parser("home", help="read, or set both page and timeout in minutes")
     home.add_argument("--page", type=int, choices=range(1, 16))
     home.add_argument("--timeout-min", type=int, choices=range(61))
     name = sub.add_parser("name")
     name.add_argument("--set", dest="new_name", help="empty string resets the default name")
+    voice = sub.add_parser("voice", help="read/set WebSocket URL only; restart separately to apply")
+    voice.add_argument("--url", help="ws:// or wss:// URL; omitted means read only")
     call = sub.add_parser("call", help="call a documented MCP tool with a JSON args file")
     call.add_argument("tool")
     call.add_argument("--args-file", help="UTF-8 JSON object, or - for stdin; default {}")
@@ -39,6 +52,8 @@ def main(argv=None):
 
     # Reject bad input locally before contacting hardware.
     body = None
+    if args.command == "voice" and args.url is not None:
+        validate_websocket_url(args.url)
     if args.command == "home" and ((args.page is None) != (args.timeout_min is None)):
         raise BuildError("home writes require both --page and --timeout-min")
     if args.command == "name" and args.new_name is not None:
@@ -67,18 +82,21 @@ def main(argv=None):
     elif args.command == "pages":
         result = client.call("fridge.page.control", {"action": "list"})
     elif args.command == "elements":
-        tool = "fridge.canvas.control" if args.page == 6 else "fridge.page.element.control"
-        result = client.call(tool, {"action": "list", **({"page": args.page} if args.page != 6 else {})})
+        require_page(client, args.page, editable=True)
+        result = client.call("fridge.page.element.control", {"action": "list", "page": args.page})
     elif args.command == "show":
         existing_page(client, args.page)
         result = client.call("fridge.pagemanager", {"target_page": args.page})
     elif args.command == "layout":
+        existing_page(client, args.page)
         result = client.http_json(f"/api/page_layout?page={args.page}")
     elif args.command == "home":
         if args.page is not None:
             existing_page(client, args.page)
             body = {"page": args.page, "timeout_min": args.timeout_min}
         result = client.http_json("/api/home_page", body)
+    elif args.command == "voice":
+        result = client.http_json("/api/websocket_url", None if args.url is None else {"url": args.url})
     elif args.command == "name":
         result = client.http_json("/api/device_name", None if args.new_name is None else {"name": args.new_name})
     else:

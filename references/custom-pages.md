@@ -1,11 +1,12 @@
 # Custom pages and dynamic elements
 
-Firmware 2.5.2.1; aggregate tools are compatible with the 2.0.7+ contract.
-Pages 7–15 persist user layouts. Page 6 is a separate canvas.
+Firmware 2.5.2.4. Page 1 is fixed read-only chat. Existing pages 2–15
+persist user layouts, including migrated page 6. Default page 2, 时间显示,
+contains time/date/image; preserve it unless the user wants to replace it.
 
 ## Create, populate, display
 
-1. `xiaozhi.py IP pages` lists built-in and custom pages. Do not assume 7 is free.
+1. `xiaozhi.py IP pages` lists built-in and custom pages. Do not assume a particular page exists or is free.
 2. Call `fridge.page.control` with `{"action":"create","name":"Weather"}`.
    Read the allocated page from the response.
 3. Build that page with a validated `.layout` file ending in `refresh`.
@@ -18,18 +19,18 @@ A custom text add has flat arguments:
 ```
 
 Use `fridge.page.element.control` for elements, `fridge.page.control` for page
-create/list/rename/delete/clear. Delete switches to page 5. Exact contracts,
+create/list/rename/delete/clear. Deleting the active page returns to chat 1; deleting the home resets home to 1. Exact contracts,
 line compatibility fields and reorder side effects: [API](api-reference.md).
 
 ## Layout and persistence
 
-Fonts 12/16, plus 56 for device clocks. Text alignment uses a fixed 276px region;
-`max_width` is ignored for custom pages. Use x=10 for full-screen center/right.
+Fonts 12/16, plus 56 for device clocks. Text alignment uses `max_width` (default 276px);
+this field is supported and must survive backup/restore. Use x=10 for full-screen center/right.
 Builder caps layouts at 30 elements with unique IDs. The order of add commands
 is the draw order. `update` changes text only; add with the same ID replaces geometry.
 
 LittleFS: `/canvas/custom_pages.json`, `/canvas/page_N.json` for custom pages;
-`/canvas/layout.json` for page 6. Operations save layouts; successful readback
+page 6 also uses `/canvas/page_6.json` after migration. Operations save layouts; successful readback
 verifies live state, not reboot persistence. Backup before replacing a page;
 see [failure recovery](pitfalls.md). Do not clear just to update one value.
 

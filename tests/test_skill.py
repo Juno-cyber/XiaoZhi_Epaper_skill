@@ -26,7 +26,7 @@ class FakeClient:
         self.calls = []
         self.images = []
         self.elements = []
-        self.pages = pages if pages is not None else [{"page": 7, "name": "Test", "builtin": False}]
+        self.pages = pages if pages is not None else [{"page": n, "name": "Test", "builtin": False} for n in (2, 6, 7)]
 
     def call(self, tool, args):
         self.calls.append((tool, dict(args)))
@@ -41,6 +41,9 @@ class FakeClient:
             item["type"] = item.get("type") or item["action"].removeprefix("add_")
             for key in ("action", "page", "refresh"):
                 item.pop(key, None)
+            if item["type"] == "line":
+                item.pop("x", None)
+                item.pop("y", None)
             self.elements.append(item)
         return {"status": "success"}
 
@@ -84,7 +87,7 @@ class LayoutTests(unittest.TestCase):
             builder.build_page(client, 7, "clear\ntext id=t text=x x=0 y=0", output=lambda _: None)
         self.assertEqual(client.calls, [("fridge.page.control", {"action": "list"})])
 
-    def test_canvas_uses_canvas_actions(self):
+    def test_migrated_canvas_uses_custom_page_actions(self):
         client = FakeClient()
         builder.build_page(
             client,
@@ -92,10 +95,10 @@ class LayoutTests(unittest.TestCase):
             'text id=t text="hello" x=1 y=2 font_size=16\nrefresh',
             output=lambda _: None,
         )
-        self.assertEqual(client.calls[0][0], "fridge.canvas.control")
-        self.assertEqual(client.calls[0][1]["action"], "add_text")
-        self.assertEqual(client.calls[1], ("fridge.canvas.control", {"action": "list"}))
-        self.assertEqual(client.calls[2], ("fridge.pagemanager", {"target_page": 6}))
+        self.assertEqual(client.calls[1][0], "fridge.page.element.control")
+        self.assertEqual(client.calls[1][1]["action"], "add")
+        self.assertEqual(client.calls[2], ("fridge.page.element.control", {"action": "list", "page": 6}))
+        self.assertEqual(client.calls[3], ("fridge.pagemanager", {"target_page": 6}))
 
     def test_hline_expands_to_equal_nonzero_y_endpoints_and_is_verified(self):
         client = FakeClient()
@@ -105,14 +108,14 @@ class LayoutTests(unittest.TestCase):
             "hline id=sep x1=12 x2=284 y=63 width=2\nrefresh",
             output=lambda _: None,
         )
-        tool, args = client.calls[0]
-        self.assertEqual(tool, "fridge.canvas.control")
+        tool, args = client.calls[1]
+        self.assertEqual(tool, "fridge.page.element.control")
         self.assertEqual(
             {key: args[key] for key in ("x1", "y1", "x2", "y2")},
             {"x1": 12, "y1": 63, "x2": 284, "y2": 63},
         )
-        self.assertEqual(client.calls[1], ("fridge.canvas.control", {"action": "list"}))
-        self.assertEqual(client.calls[2], ("fridge.pagemanager", {"target_page": 6}))
+        self.assertEqual(client.calls[2], ("fridge.page.element.control", {"action": "list", "page": 6}))
+        self.assertEqual(client.calls[3], ("fridge.pagemanager", {"target_page": 6}))
 
     def test_line_geometry_mismatch_fails_before_refresh(self):
         class WrongStartClient(FakeClient):
@@ -190,7 +193,7 @@ class LayoutTests(unittest.TestCase):
                 client, 6, "clear\nimage id=logo name=missing x=0 y=0 w=8 h=8\nrefresh",
                 output=lambda _: None,
             )
-        self.assertEqual(client.calls, [])
+        self.assertEqual(client.calls, [("fridge.page.control", {"action": "list"})])
 
     def test_adversarial_boundaries(self):
         invalid_layouts = [
@@ -205,7 +208,6 @@ class LayoutTests(unittest.TestCase):
             "text id=t text=x x=0 y=0 id=t2",
             "text id=t text=居中 x=148 y=0 align=center",
             "text id=t text=右对齐 x=30 y=0 align=right",
-            "text id=t text=x x=0 y=0 dynamic=true",
             "pixart id=p art=../../etc/passwd x=0 y=0",
             "text id=t text=x x=0 y=0 refresh=true",
             "text id=t text=x x=0 y=0\nclear",
@@ -239,10 +241,7 @@ class LayoutTests(unittest.TestCase):
             builder.parse_layout(
                 "text id=date text=---- x=10 y=5 font_size=56 dynamic=true dynamic_type=date", 7
             )
-        with self.assertRaisesRegex(builder.BuildError, "ignores max_width"):
-            builder.parse_layout(
-                "text id=t text=x x=10 y=5 max_width=100", 7
-            )
+        builder.parse_layout("text id=t text=x x=10 y=5 max_width=100", 7)
 
     def test_image_names_allow_safe_extensions_but_not_paths(self):
         command = builder.parse_layout("image id=logo name=logo.bin x=0 y=0 w=8 h=8", 6)[0]
@@ -305,7 +304,7 @@ class MockDeviceHandler(BaseHTTPRequestHandler):
         tool = payload.get("tool")
         args = payload.get("args", {})
         if tool == "fridge.page.control" and args.get("action") == "list":
-            inner = [{"page": 7, "name": "Test", "builtin": False}]
+            inner = [{"page": n, "name": "Test", "builtin": False} for n in (2, 6, 7)]
         elif tool in ("fridge.canvas.control", "fridge.page.element.control") and args.get("action") == "list":
             inner = [dict(item) for item in type(self).elements]
         else:

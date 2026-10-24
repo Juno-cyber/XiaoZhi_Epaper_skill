@@ -1,6 +1,6 @@
 # Litsea console: source index and browser-specific behavior
 
-Baseline: `Litsea_Top` commit `fae123e` (2026-10-18). Local checkout is commonly
+Baseline: `Litsea_Top` commit `9bc7bdc` (2026-10-24). Local checkout is commonly
 `~/Gitproject/Litsea_Top`; use its actual location. Normal Agent control should
 use this skill's Python scripts rather than driving the website.
 
@@ -17,7 +17,7 @@ use this skill's Python scripts rather than driving the website.
 
 Do not copy old CORS patches or Nginx snippets into firmware/site configuration:
 the current firmware already has CORS handlers and the website owns its routes.
-LocalControl uses 32 handler slots and at most 5 open sockets in this baseline.
+
 
 ## What changed in recent discovery
 
@@ -34,7 +34,14 @@ website scanning timeouts and heuristics are not interchangeable with Python's.
 ## Browser cannot connect but Python can
 
 Check browser local-network permission, HTTPS-to-HTTP restrictions and the
-site's HTTP compatibility entry. CORS is separate from network reachability.
+browser version. Edge 143+ / Chrome 142+ use the HTTPS console and local-network
+permission; old Chromium is not fixed simply by switching to public HTTP.
+Safari/Firefox may use the explicit HTTP compatibility entry. If a system proxy
+is active, bypass private LAN ranges and `.local` in its configuration. Python
+clients in this skill explicitly bypass environment proxies; TUN/VPN routing is
+still an OS concern. CORS is separate from network reachability.
+The console tabs are 墨水屏页面 / 画布绘制 / 语音配置. Voice URL read/save uses
+`/api/websocket_url`; it does not change OTA. Page lists come from the device.
 The web console includes device name, home page and timeout controls; 0 means
 no automatic return. Connect directly to a known LAN device when appropriate.
 

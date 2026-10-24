@@ -5,12 +5,12 @@ then run the same command without `--check`. `refresh` presents once after readb
 All element writes have `refresh:false`. `switch PAGE` is a compatibility alias
 for the final presentation, not an instruction to show an intermediate screen.
 
-## Greeting / one thought (page 6)
+## Greeting / one thought (an existing custom page)
 
 Use `templates/hello.layout`. Replace its message; keep generous white space.
 A full-screen centered line is `x=10 align=center` (region width 276), not x=148.
 
-## Three tasks (canvas or existing custom page)
+## Three tasks (existing custom page 2–15)
 
 ```text
 clear
