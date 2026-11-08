@@ -17,7 +17,7 @@ User-selected defaults (2026-10-25), not a universal requirement for other users
 
 ## Firmware compatibility
 
-The maintained 2.5.2.8 firmware includes actual WenQuanYi 14 and uses Fredoka
+The maintained 2.5.2.9 firmware includes actual WenQuanYi 14 and uses Fredoka
 Regular for the native 56 px clock. Older 2.5.2.4 builds may map size 14 to
 WenQuanYi 16 and size 56 to Mystery Quest, so check the installed version before
 relying on the newer appearance.

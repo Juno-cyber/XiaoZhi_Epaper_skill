@@ -1,4 +1,4 @@
-"""2.5.2.8 contracts: pages, restored widths, voice modes and Agent HTTP."""
+"""2.5.2.9 contracts: pages, restored widths, voice modes and Agent HTTP."""
 import contextlib
 import io
 import json
@@ -13,6 +13,12 @@ import xiaozhi
 
 
 class PageContractTests(unittest.TestCase):
+    def test_raw_call_rejects_non_display_tools_before_network(self):
+        with mock.patch.object(xiaozhi, "DeviceClient") as factory:
+            with self.assertRaisesRegex(builder.BuildError, "outside the Yunmo"):
+                xiaozhi.main(["192.168.1.12", "call", "device.unsupported"])
+            factory.assert_not_called()
+
     def test_all_custom_page_numbers_use_registry_and_generic_tools(self):
         for page in (2, 3, 5, 6, 15):
             with self.subTest(page=page):
@@ -73,7 +79,7 @@ class VoiceHttpTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 requests.append(('GET', self.path, None))
-                self.respond({"status":"ok","board":"Yunmo_x1","version":"2.5.2.8"} if self.path=='/' else {"url":"wss://old.example/voice"})
+                self.respond({"status":"ok","board":"Yunmo_x1","version":"2.5.2.9"} if self.path=='/' else {"url":"wss://old.example/voice"})
             def do_POST(self):
                 body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 requests.append(('POST',self.path,body));self.respond(body)
@@ -100,7 +106,7 @@ class VoiceHttpTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 requests.append(("GET", self.path, None))
-                self.respond({"status":"ok","board":"Yunmo_x1","version":"2.5.2.8"}
+                self.respond({"status":"ok","board":"Yunmo_x1","version":"2.5.2.9"}
                              if self.path == "/" else voice_state)
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -108,7 +114,7 @@ class VoiceHttpTests(unittest.TestCase):
                 if self.path == "/api/voice_config":
                     self.respond(dict(voice_state, revision=8, mode=body.get("mode", "xiaozhi")))
                 else:
-                    self.respond({"revision": 8, "config": {"mode": "qwen"}, "version": "2.5.2.8"})
+                    self.respond({"revision": 8, "config": {"mode": "qwen"}, "version": "2.5.2.9"})
             def respond(self, body):
                 data=json.dumps(body).encode();self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
             def log_message(self, *args): pass

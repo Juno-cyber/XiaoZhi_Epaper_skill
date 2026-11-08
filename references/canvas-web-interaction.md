@@ -33,7 +33,7 @@ constraints rather than duplicating JavaScript handlers that can drift.
   target page. Cancel stale reads during rapid switching and retain every
   supported element returned by the device.
 - Reorder is a firmware side effect: canvas reorder presents immediately;
-  custom-page reorder only changes persisted order in 2.5.2.8.
+  custom-page reorder only changes persisted order in 2.5.2.9.
 - Handle inner MCP errors and unknown outcomes; a timeout is not permission to
   retry a mutation or rebuild a page automatically.
 - Images must be resized/binarized on the host: row-padded 1-bpp, MSB first,

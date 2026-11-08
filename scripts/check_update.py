@@ -8,11 +8,14 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE_RECORD = ".yunmo-source.json"
 TRUSTED_REMOTE = "https://github.com/juno-cyber/xiaozhi_epaper_skill"
+REMOTE_HEAD_URL = "https://api.github.com/repos/juno-cyber/xiaozhi_epaper_skill/commits/main"
 
 
 class UpdateSkipped(Exception):
@@ -47,6 +50,29 @@ def run_git(source, args, deadline):
         raise UpdateSkipped("远程仓库暂时不可用") from exc
 
 
+def advertised_remote_head(deadline):
+    """Read the public main SHA without paying the cost of git fetch when current."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise UpdateSkipped("检查超时")
+    request = urllib.request.Request(
+        REMOTE_HEAD_URL,
+        headers={
+            "Accept": "application/vnd.github.sha",
+            "User-Agent": "yunmo-skill-update-check",
+            "Connection": "close",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=max(0.1, remaining)) as response:
+            value = response.read(128).decode("ascii").strip().strip('"')
+    except (OSError, TimeoutError, UnicodeDecodeError, urllib.error.URLError) as exc:
+        raise UpdateSkipped("远程仓库暂时不可用") from exc
+    if len(value) != 40 or any(ch not in "0123456789abcdef" for ch in value.lower()):
+        raise UpdateSkipped("远程仓库返回了无效版本")
+    return value.lower()
+
+
 def locate_source(root):
     if (root / ".git").exists():
         return root, False, ""
@@ -64,6 +90,25 @@ def locate_source(root):
 def update(root=ROOT, timeout=8.0):
     deadline = time.monotonic() + max(1.0, timeout)
     source, installed_copy, installed_commit = locate_source(root)
+
+    def sync_installed_copy(commit):
+        if not installed_copy or installed_commit == commit:
+            return False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise UpdateSkipped("源码已更新，安装副本将在下次检查时同步")
+        installer = source / "scripts" / "install_skill.py"
+        try:
+            subprocess.run(
+                [sys.executable, str(installer), "--target", str(root)],
+                cwd=source, timeout=remaining, check=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.TimeoutExpired as exc:
+            raise UpdateSkipped("源码已更新，安装副本将在下次检查时同步") from exc
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise UpdateSkipped("源码已更新，安装副本同步失败") from exc
+        return True
+
     remote = run_git(source, ["remote", "get-url", "origin"], deadline).stdout.strip()
     if canonical_remote(remote) != TRUSTED_REMOTE:
         raise UpdateSkipped("远程仓库地址不匹配")
@@ -73,8 +118,18 @@ def update(root=ROOT, timeout=8.0):
     if run_git(source, ["status", "--porcelain"], deadline).stdout.strip():
         raise UpdateSkipped("源码仓库有本地修改")
 
-    run_git(source, ["fetch", "--quiet", "origin", "main:refs/remotes/origin/main"], deadline)
     local = run_git(source, ["rev-parse", "HEAD"], deadline).stdout.strip()
+    advertised_head = advertised_remote_head(deadline)
+    if local == advertised_head:
+        return "updated" if sync_installed_copy(local) else "current"
+    try:
+        run_git(source, ["merge-base", "--is-ancestor", advertised_head, local], deadline)
+    except UpdateSkipped:
+        pass
+    else:
+        return "updated" if sync_installed_copy(local) else "current"
+
+    run_git(source, ["fetch", "--quiet", "origin", "main:refs/remotes/origin/main"], deadline)
     remote_head = run_git(source, ["rev-parse", "origin/main"], deadline).stdout.strip()
     if local == remote_head:
         source_updated = False
@@ -92,20 +147,7 @@ def update(root=ROOT, timeout=8.0):
             local = remote_head
             source_updated = True
 
-    if installed_copy and installed_commit != local:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise UpdateSkipped("源码已更新，安装副本将在下次检查时同步")
-        installer = source / "scripts" / "install_skill.py"
-        try:
-            subprocess.run(
-                [sys.executable, str(installer), "--target", str(root)],
-                cwd=source, timeout=remaining, check=True,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.TimeoutExpired as exc:
-            raise UpdateSkipped("源码已更新，安装副本将在下次检查时同步") from exc
-        except (OSError, subprocess.CalledProcessError) as exc:
-            raise UpdateSkipped("源码已更新，安装副本同步失败") from exc
+    if sync_installed_copy(local):
         return "updated"
     return "updated" if source_updated else "current"
 

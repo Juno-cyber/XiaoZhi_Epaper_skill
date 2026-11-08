@@ -1,7 +1,7 @@
 # Voice modes and local Agent API
 
 Read this reference only for voice-mode configuration, Qwen realtime access,
-scheduled tasks, memory, or session management. Firmware baseline: 2.5.2.8.
+scheduled tasks, memory, or session management. Firmware baseline: 2.5.2.9.
 
 ## Standard and Qwen realtime voice
 
@@ -74,7 +74,7 @@ Supported operations include `config`, `tasks`, `memory`, `session_clear`, and
 automatically retry an ambiguous task creation: list tasks first because the
 request may already have succeeded. Task IDs must come from a fresh list.
 
-Tasks require Qwen or Agent mode after restart. Firmware 2.5.2.8 supports at most
+Tasks require Qwen or Agent mode after restart. Firmware 2.5.2.9 supports at most
 eight tasks and requires a `task_type`:
 
 - `reminder`: speak the supplied reminder, without tools.

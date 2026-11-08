@@ -19,7 +19,7 @@
 
 Cache only supplies candidates. `--all --json` enumerates devices; select by
 identity. Do not write to the first device just because several share a board.
-The default discovery call stops after finding one; it is not an inventory.
+The default discovery call stops after finding the first validated device.
 
 ## An update seems to refresh twice
 
@@ -49,7 +49,7 @@ A single successful HTTP response cannot establish physical completion.
 
 The skill can eliminate duplicate requests it sends. Strict atomic batches,
 refresh-completion telemetry and a same-page partial-refresh API would require
-firmware changes; do not claim they exist in 2.5.2.8.
+firmware changes; do not claim they exist in 2.5.2.9.
 
 ## Failed / partial writes
 

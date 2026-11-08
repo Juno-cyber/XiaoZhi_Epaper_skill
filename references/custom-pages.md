@@ -1,6 +1,6 @@
 # Custom pages and dynamic elements
 
-Firmware 2.5.2.8. Page 1 is fixed read-only chat. Existing pages 2–15
+Firmware 2.5.2.9. Page 1 is fixed read-only chat. Existing pages 2–15
 persist user layouts, including migrated page 6. Default page 2, 时间显示,
 contains time/date/image; preserve it unless the user wants to replace it.
 

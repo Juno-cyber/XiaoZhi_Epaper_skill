@@ -535,7 +535,7 @@ class DeploymentTests(unittest.TestCase):
 class LegacyTemplateTests(unittest.TestCase):
     def test_legacy_template_rejects_non_canvas_commands_before_network(self):
         invalid_commands = [
-            '{"tool":"fridge.item.clear_all","args":{}}',
+            '{"tool":"device.unsupported","args":{}}',
             '{"tool":"fridge.canvas.add_rect","args":{"id":"r","x":290,"y":0,"w":7,"h":1,"refresh":false}}',
         ]
         for command in invalid_commands:

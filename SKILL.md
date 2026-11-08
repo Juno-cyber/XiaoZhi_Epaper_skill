@@ -3,62 +3,53 @@ name: yunmo-control
 description: Discover and control Yunmo (云墨) e-paper devices on a trusted LAN, including pages, images, home-page settings, standard/Qwen realtime voice configuration, and local Agent management. Use for device operation over local HTTP, not cloud/MQTT control.
 license: MIT
 metadata:
-  version: 3.2.4
+  version: 3.3.0
   author: Juno-cyber
   platforms: [linux, macos, windows]
   prerequisites:
     commands: [python3]
-  tags: [yunmo, esp32, smart-home, iot, lan-control]
+  tags: [yunmo, esp32, e-paper, voice-device, lan-control]
   hermes:
-    tags: [yunmo, esp32, smart-home, iot, lan-control]
-    related_skills: [openhue]
+    tags: [yunmo, esp32, e-paper, voice-device, lan-control]
 ---
 
 # 云墨 LAN control
 
-Operate from this skill directory. Core scripts use Python 3.10+ standard library;
-on Windows replace `python3` with `py -3 -X utf8`. No curl, Bash, SDK or browser
-is needed for normal control. Current reference: firmware **2.5.2.8**, 296×128.
+Operate from this skill directory. Core commands need Python 3.10+ only; on
+Windows replace `python3` with `py -3 -X utf8`. Current target: `Yunmo_x1`,
+firmware **2.5.2.9**, 296×128.
 
-## Before device control
+## Fast start
 
-Once per working session, run the bounded update check before the first device
-operation:
+Do not inspect the repository, tests, script implementations, README, or every
+reference before operating a device. Run the commands below and open one reference
+only when the requested operation needs details.
 
 ```bash
 python3 scripts/check_update.py --timeout 8
+python3 scripts/xiaozhi_discovery.py --json --save
 ```
 
-It only fast-forwards a clean `main` checkout from the trusted upstream and then
-syncs the installed copy. Timeout, offline access, local edits, a different remote,
-or diverged history must never block device control; continue with the current
-version when the script reports that the check was skipped.
+The update check reads the remote commit first and downloads Git data only when
+an update exists. It may fast-forward a clean trusted `main` checkout and sync an
+installed copy. A timeout, offline network, local edits, untrusted remote, or
+diverged history reports a skip and must not block device control.
+
+Discovery validates a cached address first and normally returns immediately. If
+the user supplies an IP, skip discovery and run `python3 scripts/xiaozhi.py IP health`.
+Use `--all --json` only when the user needs every device. If discovery fails, read
+[troubleshooting](references/pitfalls.md); never guess a network range.
 
 ## Product naming
 
-- Call the product and each controlled e-paper device **云墨** in user-facing
-  conversation, status reports, prompts and generated page copy. The current
-  board model is `Yunmo_x1`.
-- For multiple devices, use `云墨（设备名称）` when a saved name exists, otherwise
-  use a clear location or short MAC suffix such as `云墨（书桌）` or `云墨（A1B2）`.
-  Confirm device identity before writes; never guess which 云墨 the user means.
+- Call the product and device **云墨** in user-facing text. For multiple devices,
+  use `云墨（设备名/位置）` and confirm identity before writes.
 - Use `name --set` only when the user explicitly asks to rename a device.
 
-## Connect, then choose one path
+## Common operations
 
 ```bash
-python3 scripts/xiaozhi_discovery.py --json --save
 python3 scripts/xiaozhi.py DEVICE_IP health
-```
-
-Discovery validates cached addresses before mDNS/UDP/subnet scanning. On failure,
-try `--host KNOWN_IP` or `--subnet LAN_CIDR --scan-timeout 4`; do not guess networks.
-For multiple devices use `--all --json`, select by name/MAC, and pass the selected IP.
-A cached IP can be reassigned: confirm `GET /` identity before every write session.
-
-**Read or make a simple change:**
-
-```bash
 python3 scripts/xiaozhi.py DEVICE_IP pages
 python3 scripts/xiaozhi.py DEVICE_IP elements 2
 python3 scripts/xiaozhi.py DEVICE_IP show 2
@@ -67,56 +58,39 @@ python3 scripts/xiaozhi.py DEVICE_IP voice
 python3 scripts/xiaozhi.py DEVICE_IP voice-config
 ```
 
-For home-page settings, rename, raw tool calls or standard voice URL configuration, read
-[api-reference.md](references/api-reference.md). For Qwen realtime or local Agent
-management, read [voice-and-agent.md](references/voice-and-agent.md). CLI output is decoded JSON;
-errors exit nonzero. HTTP success alone does not prove tool success.
+Read [API](references/api-reference.md) for page creation, home settings, rename,
+raw calls, images or standard voice URL changes. Read [Voice and Agent](references/voice-and-agent.md)
+only for Qwen realtime or local Agent operations. CLI errors exit nonzero.
 
-**Build a layout:** write a UTF-8 `.layout` file and use the builder:
+For a complete layout, write a UTF-8 `.layout` and use the builder:
 
 ```bash
 python3 scripts/quick_page_builder.py DEVICE_IP PAGE_ID templates/hello.layout --check
 python3 scripts/quick_page_builder.py DEVICE_IP PAGE_ID templates/hello.layout --backup before.json
 ```
 
-Use the allocated `page` from `fridge.page.control action:create` for `PAGE_ID`,
-or a listed `builtin:false` page the user wants to replace. Never assume page 6 exists.
-Use `clear`, then elements, then one `refresh`. The builder validates everything,
-snapshots the old page, batches with `refresh=false`, reads back all written
-elements, then submits one `fridge.pagemanager` call. Legacy `switch N` is deferred
-and merged into that final call; it must target the page being built. With neither
-`refresh` nor `switch`, it only writes and verifies. See
-[page-templates.md](references/page-templates.md) for layouts.
+`PAGE_ID` must be an existing `builtin:false` page selected by the user or the page
+returned by page creation. Never assume page 6 exists. The builder validates,
+backs up, writes without intermediate refreshes, reads back and presents once.
+See [templates](references/page-templates.md) only when creating a layout.
 
-## Constraints that matter
+## Required constraints
 
-- Requests to one device are serial. Core calls wait 20s because firmware may
-  queue an MCP call for 15s. Never automatically retry a timed-out write.
-- A rejected rebuild can restore its snapshot before presentation. An ambiguous
-  transport failure stops **without rollback**; read state and use the backup to
-  decide recovery. The batch is not a firmware transaction.
-- Do not switch before writing or refresh individual elements. `SetPage`, even
-  for the same page, requests a full refresh. HTTP acknowledgment and layout
-  readback do **not** prove physical panel completion. See
-  [pitfalls.md](references/pitfalls.md) for double-flash diagnosis.
+- Confirm device identity before writes. Requests to one device are serial. Never
+  automatically retry a timed-out write; read state first because it may have run.
+- Back up before replacing a page. Stop after an ambiguous transport failure.
+- Batch with `refresh=false`, verify, then present once. A response does not prove
+  the physical e-paper refresh has completed.
 - Page 1 is read-only chat. Existing pages 2–15 are editable custom pages,
-  including migrated page 6. Default page 2 is “时间显示” (time/date/image).
-  Always list pages and use `builtin:false`; create missing pages first.
-  Fridge inventory/stats/recipes and love/memorial counters are suspended.
-  The `fridge.page.*` prefix remains the display API, not active fridge business.
+  and default page 2 is “时间显示”. Always list pages; preserve page 2 unless the
+  user asks to replace it.
 - Live time/date must use native `dynamic_type=clock/date` elements, never pixels
-  baked into a bitmap. Historical publication dates, durations and explicitly
-  labeled historical previews stay fixed. Read [display preferences](references/display-preferences.md)
-  when updating this user’s canvases.
-- Keep important content within x=5–291, y=2–126. Fonts: 12/14/16; custom `clock`
-  also supports 56. At most 30 elements per layout. Built-in pixel art is 24×24;
-  image `w/h` describes raw storage and does not resize it.
-- For full-width centered/right text use x=10 and `max_width=276`. All custom
-  pages accept `max_width`; retain it when backing up or restoring layouts. Prefer `hline` for separators. Avoid unsupported `·`, `・`, `—`.
+  baked into a bitmap. Keep content within x=5–291, y=2–126; use fonts 12/14/16
+  (`clock` also supports 56), at most 30 elements, and avoid `·`, `・`, `—`.
 - Device HTTP :8080 and development proxies belong on a trusted LAN/loopback.
   Do not expose them to the public internet.
 
-## Read only what the task needs
+## Open only when needed
 
 | Task | Reference |
 |---|---|
@@ -124,11 +98,8 @@ and merged into that final call; it must target the page being built. With neith
 | Qwen realtime, voice modes, tasks or memory | [Voice and Agent](references/voice-and-agent.md) |
 | Custom pages, clocks, persistence | [Custom pages](references/custom-pages.md) |
 | Discovery, failed writes, extra refreshes | [Troubleshooting](references/pitfalls.md) |
-| Layout examples / creative choices | [Templates](references/page-templates.md) / [Design](references/display-philosophy.md) |
-| Litsea browser console / element editor | [Web console](references/web-console.md) / [Interaction](references/canvas-web-interaction.md) |
-| Firmware changes or serial diagnostics | [Firmware](references/firmware-development.md) |
-| Requested Hermes automation | [Hermes workflow](references/hermes-workflow.md) |
+| Layout design | [Templates](references/page-templates.md) / [Design](references/display-philosophy.md) |
+| Website or firmware development | [Web](references/web-console.md) / [Firmware](references/firmware-development.md) |
+| User-requested Hermes automation | [Hermes](references/hermes-workflow.md) |
 
-Scheduling is optional and runtime-specific. Do not create a schedule merely to
-control a screen. Load the Hermes reference only when the user requests automation
-in that runtime; other agents use their own scheduler.
+Do not create schedules unless the user requests one.

@@ -9,6 +9,15 @@ import urllib.parse
 from quick_page_builder import BuildError, DeviceClient, DEFAULT_TIMEOUT, require_page
 
 
+DOCUMENTED_TOOLS = {
+    "device.network.info",
+    "fridge.canvas.control",
+    "fridge.page.control",
+    "fridge.page.element.control",
+    "fridge.pagemanager",
+}
+
+
 def existing_page(client, page):
     return require_page(client, page)
 
@@ -86,6 +95,8 @@ def main(argv=None):
         if not isinstance(body.get("op"), str) or not body["op"]:
             raise BuildError("Agent requests require a nonempty string op")
     if args.command == "call":
+        if args.tool not in DOCUMENTED_TOOLS:
+            raise BuildError("tool is outside the Yunmo display-control API")
         body = {}
         if args.args_file:
             body = read_json_object(args.args_file, 4095)

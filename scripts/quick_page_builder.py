@@ -598,7 +598,7 @@ def require_page(client, page, editable=False):
     if entry is None:
         raise BuildError(f"custom page {page} does not exist; list/create it first")
     if editable and entry.get("builtin") is not False:
-        raise BuildError(f"page {page} is built-in or lacks editable metadata; firmware 2.5.2.8 is required")
+        raise BuildError(f"page {page} is built-in or lacks editable metadata; firmware 2.5.2.9 is required")
     return entry
 
 

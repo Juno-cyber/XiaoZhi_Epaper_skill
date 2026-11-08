@@ -1,6 +1,6 @@
 # Local HTTP / MCP contracts
 
-Reference: xiaozhi-esp32 `c672093`, firmware 2.5.2.8 (2026-11-06).
+Reference: firmware 2.5.2.9.
 Device base URL: `http://DEVICE_IP:8080`. Verify `GET /` before mutation.
 
 ## Portable CLI
@@ -79,8 +79,7 @@ No API reports physical panel completion. A timeout can occur after execution;
 inspect state before another write, including rollback.
 
 For capability discovery use JSON-RPC `tools/list` on `/mcp` and follow every
-`nextCursor`. Do not hardcode a tool count; fridge business tools are suspended.
-`fridge.help` is absent. Legacy names such as `fridge.canvas.add_text` are mapped
+`nextCursor`. Do not hardcode a tool count. Legacy names such as `fridge.canvas.add_text` are mapped
 only by `/api/call`; use aggregate names in new code. Older firmware is outside
 the current builder contract; do not silently switch to an unsafe fallback.
 
@@ -120,14 +119,6 @@ elements in desired z order.
 Canvas `refresh` invokes `ShowCanvasPage` and full refresh, but does not reset the
 home timer on the legacy canvas API. The builder uses one final `fridge.pagemanager` call
 for consistent home-return behavior on every page.
-
-## Suspended functions
-
-`fridge.item.*`, `fridge.stats.*` and `fridge.recipe.recommend` are not registered
-in this board's 2.5.2.8 firmware. Do not poll them for creative-layout footnotes
-or fall back to inventory writes. Stored fridge data is retained. The fixed
-stats/list/recipe/home-image pages and love/memorial counter are removed;
-`fridge.page.*` and `fridge.pagemanager` remain active display tools.
 
 ## Voice server URL
 

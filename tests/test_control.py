@@ -348,10 +348,31 @@ class UpdateCheckTests(unittest.TestCase):
 
         with mock.patch.object(check_update, "locate_source",
                                return_value=(Path("/repo"), False, "")), \
+             mock.patch.object(check_update, "advertised_remote_head", return_value="remote"), \
              mock.patch.object(check_update, "run_git", side_effect=fake_git):
             self.assertEqual(check_update.update(timeout=2), "current")
         self.assertIn(["merge-base", "--is-ancestor", "remote", "local"], calls)
         self.assertFalse(any(args[0] == "merge" for args in calls))
+
+    def test_current_remote_head_avoids_git_fetch(self):
+        calls = []
+
+        def fake_git(source, args, deadline):
+            calls.append(args)
+            outputs = {
+                ("remote", "get-url", "origin"): "https://github.com/juno-cyber/xiaozhi_epaper_skill\n",
+                ("branch", "--show-current"): "main\n",
+                ("status", "--porcelain"): "",
+                ("rev-parse", "HEAD"): "a" * 40 + "\n",
+            }
+            return mock.Mock(stdout=outputs[tuple(args)])
+
+        with mock.patch.object(check_update, "locate_source",
+                               return_value=(Path("/repo"), False, "")), \
+             mock.patch.object(check_update, "advertised_remote_head", return_value="a" * 40), \
+             mock.patch.object(check_update, "run_git", side_effect=fake_git):
+            self.assertEqual(check_update.update(timeout=2), "current")
+        self.assertFalse(any(args[0] == "fetch" for args in calls))
 
 
 if __name__ == "__main__":
