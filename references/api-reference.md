@@ -1,6 +1,6 @@
 # Local HTTP / MCP contracts
 
-Reference: xiaozhi-esp32 `052d39e`, firmware 2.5.2.4 (2026-10-24).
+Reference: xiaozhi-esp32 `c672093`, firmware 2.5.2.8 (2026-11-06).
 Device base URL: `http://DEVICE_IP:8080`. Verify `GET /` before mutation.
 
 ## Portable CLI
@@ -47,12 +47,16 @@ CLI errors are nonzero; output is decoded JSON. No automatic write retries.
 | `GET /api/websocket_url` | `{url}` only; no token returned |
 | `POST /api/websocket_url` | `{url}` only; persists selection; restart separately to apply |
 | `GET/POST /api/websocket` | Advanced enabled/url/token/version configuration; see below |
+| `GET/POST /api/voice_config` | Revisioned XiaoZhi/Qwen mode and realtime configuration; key is never returned |
+| `POST /api/agent` | Agent state/config/tasks/memory/session operations; request uses an `op` field |
+| `GET /api/agent/session_log?mode=…` | Sensitive pipeline/realtime NDJSON history export |
 | `GET /ui` | Firmware's local configuration UI |
 
 Home-page setting persists in NVS, resets the return countdown immediately, and
 **does not switch/refresh**. `timeout_min:0` disables return while keeping the
 boot home page. Return runs only in idle state; after conversation ends, a fresh
-full wait begins. Confirm a custom page exists before selecting it as home.
+full wait begins. New/default configuration uses 0, so pages do not automatically
+jump unless the user enables a timeout. Confirm a custom page exists before selecting it as home.
 
 `/api/page_layout` is a preview description, not a screenshot or restorable
 mutation list. IDs are internal/prefixed; line start is `(x,y)` and end is
@@ -97,7 +101,7 @@ the configured home resets home to 1 while preserving the timeout.
 
 | Element | Fields (flat in args) |
 |---|---|
-| text | `id,text,x,y,font_size:12|16,align:left|center|right`; all custom pages permit `max_width` (default 276) |
+| text | `id,text,x,y,font_size:12|14|16,align:left|center|right`; `clock` also supports 56; all custom pages permit `max_width` (default 276) |
 | rect | `id,x,y,w,h,filled` |
 | line | `id,x1,y1,x2,y2,width`; custom pages also send `x=x1,y=y1` |
 | image | `id,name,x,y,w,h`; file must exist with matching byte size |
@@ -120,7 +124,7 @@ for consistent home-return behavior on every page.
 ## Suspended functions
 
 `fridge.item.*`, `fridge.stats.*` and `fridge.recipe.recommend` are not registered
-in this board's 2.5.2.4 firmware. Do not poll them for creative-layout footnotes
+in this board's 2.5.2.8 firmware. Do not poll them for creative-layout footnotes
 or fall back to inventory writes. Stored fridge data is retained. The fixed
 stats/list/recipe/home-image pages and love/memorial counter are removed;
 `fridge.page.*` and `fridge.pagemanager` remain active display tools.
@@ -134,8 +138,9 @@ URL does not prove connection or activation. Saving selects manual WebSocket and
 requires a separate device restart; the CLI does not reboot automatically.
 
 The URL changes the voice/text dialogue connection, not the OTA address, Wi-Fi,
-screen data or AEC parameters. Manual WebSocket mode skips boot OTA/activation
-checks. Credentials are cached by the **complete URL**, retaining the current
+screen data or AEC parameters. Manual WebSocket mode still performs the boot OTA
+check, while preserving its manual voice settings and ignoring OTA activation,
+MQTT and WebSocket overrides. Credentials are cached by the **complete URL**, retaining the current
 and up to three historical targets (8 KB total bound). An unknown server does
 not inherit another server's token. Activation/token renewal and TLS trust are
 separate tasks; changing just the URL does not obtain credentials or trust a
@@ -147,6 +152,9 @@ max 2048 bytes). Changing URL without a token clears the current token;
 `token:""` explicitly clears that target's saved credentials. Saving
 `{"enabled":false}` and restarting restores automatic OTA/activation mode.
 Use this only when that advanced change is requested; avoid logging tokens.
+
+For `/api/voice_config`, Qwen realtime settings, the Workspace URL template and
+the local Agent management contract, read [voice-and-agent.md](voice-and-agent.md).
 
 ## Bitmap contract
 

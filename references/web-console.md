@@ -1,8 +1,9 @@
 # Litsea console: source index and browser-specific behavior
 
-Baseline: `Litsea_Top` commit `9bc7bdc` (2026-10-24). Local checkout is commonly
-`~/Gitproject/Litsea_Top`; use its actual location. Normal Agent control should
-use this skill's Python scripts rather than driving the website.
+Baseline: deployed Litsea console through 2026-11-08 (`full-canvas-read-20261108`;
+repository HEAD `4c6fbf8` plus reviewed deployment changes). Local checkout is
+commonly `~/Gitproject/Litsea_Top`; use its actual location. Normal Agent control
+should use this skill's Python scripts rather than driving the website.
 
 ## Maintained implementation
 
@@ -40,8 +41,9 @@ Safari/Firefox may use the explicit HTTP compatibility entry. If a system proxy
 is active, bypass private LAN ranges and `.local` in its configuration. Python
 clients in this skill explicitly bypass environment proxies; TUN/VPN routing is
 still an OS concern. CORS is separate from network reachability.
-The console tabs are 墨水屏页面 / 画布绘制 / 语音配置. Voice URL read/save uses
-`/api/websocket_url`; it does not change OTA. Page lists come from the device.
+The console tabs are 墨水屏页面 / 画布绘制 / 语音配置. XiaoZhi URL read/save uses
+`/api/websocket_url`; XiaoZhi/Qwen mode settings use `/api/voice_config`. Neither
+changes OTA. Page lists come from the device.
 The web console includes device name, home page and timeout controls; 0 means
 no automatic return. Connect directly to a known LAN device when appropriate.
 
@@ -63,6 +65,12 @@ never publish a proxy to an unauthenticated device.
   Browser fonts are approximations; physical panel appearance still needs checking.
 - Whole layout: serial writes with `refresh:false`, then one page presentation.
   The web editor can use per-element auto-refresh; turn that off when batching.
+  Newly added/edited clock and date elements remain browser-side and show as
+  pending until the user clicks 同步画布; dragging and ordering stay local too.
+  Removing a pending new dynamic element must not call the device.
+- On page selection, wait for the device page switch to finish before listing
+  elements. Do not truncate the returned list or silently drop supported 14 px
+  text and older off-canvas geometry; write validation remains strict.
   Canvas reorder triggers refresh even when a false flag is supplied; custom
   page reorder does not present.
 

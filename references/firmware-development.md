@@ -2,7 +2,7 @@
 
 Read this only for firmware development or serial diagnosis. Normal LAN control
 needs no SDK, serial port or flashing. Source baseline: `xiaozhi-esp32` commit
-`052d39e` (2026-10-24), version **2.5.2.4**.
+`c672093` (2026-11-06), version **2.5.2.8**.
 
 ## Find the maintained source
 
@@ -30,6 +30,7 @@ board configuration and flash instructions; this skill does not duplicate them.
 | Frame comparison/full refresh decisions | `main/display/epaperdisplay/epaper_refresh.h` |
 | Panel waveform | `components/GxEPD2/src/epd/GxEPD2_290_T5D.cpp` |
 | Voice/idle transitions | `main/application.cc` |
+| Realtime voice and Agent configuration | `main/agent/`, `main/protocols/qwen_realtime_protocol.cc`, board `agent_web.cc` |
 | Refresh/home-return regression tests | `scripts/tests/test_epaper_refresh.py`, `test_epaper_home_return.py` |
 
 ## Current behavior relevant to Agents

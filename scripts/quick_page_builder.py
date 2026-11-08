@@ -147,7 +147,8 @@ class DeviceClient:
 
     def http_json(self, path, body=None):
         """Small direct HTTP configuration/preview endpoints, without retries."""
-        if path not in ("/api/home_page", "/api/device_name", "/api/websocket_url") and not (
+        if path not in ("/api/home_page", "/api/device_name", "/api/websocket_url",
+                        "/api/voice_config", "/api/agent") and not (
                 path.startswith("/api/page_layout?page=") and path.split("=")[-1] in map(str, range(1, 16))):
             raise BuildError("unsupported HTTP configuration/preview path")
         payload = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -344,9 +345,9 @@ def validate_element(command, args, line_number):
         if len(args["text"].encode("utf-8")) > 1024 or any(ord(char) < 32 and char not in "\t" for char in args["text"]):
             raise BuildError(f"line {line_number}: text is too large or contains control characters")
         font_size = args.get("font_size", 16)
-        allowed_fonts = (12, 16, 56) if args.get("dynamic_type") == "clock" else (12, 16)
+        allowed_fonts = (12, 14, 16, 56) if args.get("dynamic_type") == "clock" else (12, 14, 16)
         if font_size not in allowed_fonts:
-            raise BuildError(f"line {line_number}: font_size must be 12 or 16 (clock dynamics also support 56)")
+            raise BuildError(f"line {line_number}: font_size must be 12, 14 or 16 (clock dynamics also support 56)")
         if args.get("align", "left") not in ("left", "center", "right"):
             raise BuildError(f"line {line_number}: align must be left, center or right")
         if "max_width" in args:
@@ -597,7 +598,7 @@ def require_page(client, page, editable=False):
     if entry is None:
         raise BuildError(f"custom page {page} does not exist; list/create it first")
     if editable and entry.get("builtin") is not False:
-        raise BuildError(f"page {page} is built-in or lacks editable metadata; firmware 2.5.2.4 is required")
+        raise BuildError(f"page {page} is built-in or lacks editable metadata; firmware 2.5.2.8 is required")
     return entry
 
 

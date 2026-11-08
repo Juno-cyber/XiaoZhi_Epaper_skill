@@ -26,6 +26,20 @@ def validate_websocket_url(value):
     return value
 
 
+def read_json_object(path, limit=96 * 1024):
+    if path == "-":
+        raw = sys.stdin.buffer.read(limit + 1)
+    else:
+        with open(path, "rb") as handle:
+            raw = handle.read(limit + 1)
+    if len(raw) > limit:
+        raise BuildError(f"JSON request is too large (max {limit} bytes)")
+    value = json.loads(raw.decode("utf-8-sig"))
+    if not isinstance(value, dict):
+        raise BuildError("JSON request must contain an object")
+    return value
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("host", help="LAN IP/hostname from discovery")
@@ -45,6 +59,10 @@ def main(argv=None):
     name.add_argument("--set", dest="new_name", help="empty string resets the default name")
     voice = sub.add_parser("voice", help="read/set WebSocket URL only; restart separately to apply")
     voice.add_argument("--url", help="ws:// or wss:// URL; omitted means read only")
+    voice_config = sub.add_parser("voice-config", help="read XiaoZhi/Qwen mode configuration")
+    voice_config.add_argument("--config-file", help="POST a revisioned JSON patch, or - for stdin")
+    agent = sub.add_parser("agent", help="read Agent state or submit an explicit Agent API request")
+    agent.add_argument("--request-file", help="JSON request object, or - for stdin; omitted sends op=get")
     call = sub.add_parser("call", help="call a documented MCP tool with a JSON args file")
     call.add_argument("tool")
     call.add_argument("--args-file", help="UTF-8 JSON object, or - for stdin; default {}")
@@ -59,19 +77,18 @@ def main(argv=None):
     if args.command == "name" and args.new_name is not None:
         if len(args.new_name.encode("utf-8")) > 64 or any(ord(c) < 32 or ord(c) == 127 for c in args.new_name):
             raise BuildError("device name must be at most 64 UTF-8 bytes without control characters")
+    if args.command == "voice-config" and args.config_file:
+        body = read_json_object(args.config_file)
+        if isinstance(body.get("revision"), bool) or not isinstance(body.get("revision"), int):
+            raise BuildError("voice-config writes require the latest integer revision")
+    if args.command == "agent":
+        body = read_json_object(args.request_file) if args.request_file else {"op": "get"}
+        if not isinstance(body.get("op"), str) or not body["op"]:
+            raise BuildError("Agent requests require a nonempty string op")
     if args.command == "call":
         body = {}
         if args.args_file:
-            if args.args_file == "-":
-                raw = sys.stdin.buffer.read(4096)
-            else:
-                with open(args.args_file, "rb") as handle:
-                    raw = handle.read(4096)
-            if len(raw) >= 4096:
-                raise BuildError("args file too large (max 4095 bytes)")
-            body = json.loads(raw.decode("utf-8-sig"))
-            if not isinstance(body, dict):
-                raise BuildError("args file must contain a JSON object")
+            body = read_json_object(args.args_file, 4095)
 
     client = DeviceClient(args.host, args.port, args.timeout)
     health = client.health()
@@ -97,6 +114,10 @@ def main(argv=None):
         result = client.http_json("/api/home_page", body)
     elif args.command == "voice":
         result = client.http_json("/api/websocket_url", None if args.url is None else {"url": args.url})
+    elif args.command == "voice-config":
+        result = client.http_json("/api/voice_config", body)
+    elif args.command == "agent":
+        result = client.http_json("/api/agent", body)
     elif args.command == "name":
         result = client.http_json("/api/device_name", None if args.new_name is None else {"name": args.new_name})
     else:

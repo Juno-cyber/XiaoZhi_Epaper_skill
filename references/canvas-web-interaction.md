@@ -26,8 +26,14 @@ constraints rather than duplicating JavaScript handlers that can drift.
 - Complete layout changes are validated first, then sent serially with all
   element refresh flags false and one final page presentation. An automatic
   per-element refresh mode is unsuitable for batching.
+- Adding or editing a native clock/date is a browser-side pending change. It is
+  written only by 同步画布, because registering a dynamic element on the active
+  page lets the device timer refresh it even when the add call used `refresh:false`.
+- Page switching is also serial: finish `fridge.pagemanager`, then list the
+  target page. Cancel stale reads during rapid switching and retain every
+  supported element returned by the device.
 - Reorder is a firmware side effect: canvas reorder presents immediately;
-  custom-page reorder only changes persisted order in 2.5.2.4.
+  custom-page reorder only changes persisted order in 2.5.2.8.
 - Handle inner MCP errors and unknown outcomes; a timeout is not permission to
   retry a mutation or rebuild a page automatically.
 - Images must be resized/binarized on the host: row-padded 1-bpp, MSB first,

@@ -1,8 +1,9 @@
-"""2.5.2.4 contracts: editable registry, restored widths, voice URL-only HTTP."""
+"""2.5.2.8 contracts: pages, restored widths, voice modes and Agent HTTP."""
 import contextlib
 import io
 import json
 import threading
+import tempfile
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
@@ -48,6 +49,16 @@ class PageContractTests(unittest.TestCase):
         commands = builder.parse_layout('text id=c text="--:--" x=10 y=5 font_size=56 dynamic_type=clock max_width=150', 6)
         self.assertEqual(commands[0][1]["dynamic_type"], "clock")
 
+    def test_extended_wqy14_dynamic_date_is_preserved(self):
+        commands = builder.parse_layout(
+            'text id=date text="日期" x=140 y=65 font_size=14 max_width=150 align=center dynamic=true dynamic_type=date', 6)
+        self.assertEqual(commands[0][1]["font_size"], 14)
+        self.assertEqual(commands[0][1]["dynamic_type"], "date")
+        client = FakeClient()
+        client.elements = [{"type":"text", "id":"date", "text":"2026-10-25", "x":140,
+            "y":65, "font_size":14, "max_width":150, "align":"center", "dtype":"date"}]
+        builder.verify_elements(client, 6, commands, exact=True)
+
     def test_invalid_voice_url_is_rejected_before_connecting(self):
         for url in ('', 'https://example.org', 'wss://user:pass@example.org/', 'wss://example.org/#secret', 'wss://example.org/\n', 'wss://example.org:99999/', 'wss://example.org/'+'a'*512):
             with self.subTest(url=url), mock.patch.object(xiaozhi, 'DeviceClient') as factory:
@@ -62,7 +73,7 @@ class VoiceHttpTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 requests.append(('GET', self.path, None))
-                self.respond({"status":"ok","board":"test","version":"2.5.2.4"} if self.path=='/' else {"url":"wss://old.example/voice"})
+                self.respond({"status":"ok","board":"test","version":"2.5.2.8"} if self.path=='/' else {"url":"wss://old.example/voice"})
             def do_POST(self):
                 body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 requests.append(('POST',self.path,body));self.respond(body)
@@ -81,3 +92,52 @@ class VoiceHttpTests(unittest.TestCase):
             self.assertEqual(requests,[('GET','/',None),('GET','/api/websocket_url',None),('GET','/',None),('POST','/api/websocket_url',{'url':'wss://next.example/voice'})])
         finally:
             server.shutdown();server.server_close();thread.join()
+
+    def test_revisioned_voice_config_and_read_only_agent_state(self):
+        requests = []
+        voice_state = {"revision": 7, "mode": "xiaozhi", "active_mode": "xiaozhi",
+                       "api_key_set": False, "restart_required": True}
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests.append(("GET", self.path, None))
+                self.respond({"status":"ok","board":"test","version":"2.5.2.8"}
+                             if self.path == "/" else voice_state)
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                requests.append(("POST", self.path, body))
+                if self.path == "/api/voice_config":
+                    self.respond(dict(voice_state, revision=8, mode=body.get("mode", "xiaozhi")))
+                else:
+                    self.respond({"revision": 8, "config": {"mode": "qwen"}, "version": "2.5.2.8"})
+            def respond(self, body):
+                data=json.dumps(body).encode();self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+            def log_message(self, *args): pass
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            prefix=['127.0.0.1','--port',str(server.server_port)]
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                xiaozhi.main(prefix + ['voice-config'])
+            self.assertEqual(json.loads(output.getvalue())["revision"], 7)
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8") as patch:
+                json.dump({"revision": 7, "mode": "qwen", "realtime_api_key": "secret"}, patch)
+                patch.flush()
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    xiaozhi.main(prefix + ['voice-config', '--config-file', patch.name])
+            returned = json.loads(output.getvalue())
+            self.assertEqual(returned["mode"], "qwen")
+            self.assertNotIn("realtime_api_key", returned)
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                xiaozhi.main(prefix + ['agent'])
+            self.assertEqual(json.loads(output.getvalue())["config"]["mode"], "qwen")
+            self.assertIn(("POST", "/api/agent", {"op":"get"}), requests)
+        finally:
+            server.shutdown();server.server_close();thread.join()
+
+    def test_voice_config_write_requires_revision_before_network(self):
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as patch:
+            json.dump({"mode":"qwen"}, patch); patch.flush()
+            with mock.patch.object(xiaozhi, "DeviceClient") as factory:
+                with self.assertRaisesRegex(builder.BuildError, "revision"):
+                    xiaozhi.main(["192.168.1.12", "voice-config", "--config-file", patch.name])
+                factory.assert_not_called()

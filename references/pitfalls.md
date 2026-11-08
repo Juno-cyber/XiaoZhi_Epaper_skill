@@ -49,7 +49,7 @@ A single successful HTTP response cannot establish physical completion.
 
 The skill can eliminate duplicate requests it sends. Strict atomic batches,
 refresh-completion telemetry and a same-page partial-refresh API would require
-firmware changes; do not claim they exist in 2.5.2.4.
+firmware changes; do not claim they exist in 2.5.2.8.
 
 ## Failed / partial writes
 
@@ -75,8 +75,9 @@ firmware changes; do not claim they exist in 2.5.2.4.
   internal render coordinates and is not a directly replayable backup.
 - Lines require all four endpoints; custom pages mirror the start into `x,y`.
   `hline` avoids accidental diagonals. Builder verifies every written element.
-- Text widths are estimates; use 12/16px, leave margins, and avoid unsupported
-  punctuation. Custom pages ignore `max_width` and align within 276px.
+- Text widths are estimates; use 12/14/16px, leave margins, and avoid unsupported
+  punctuation. A native clock also supports 56px. Custom pages preserve
+  `max_width`; center/right alignment uses that box when it is positive.
 - Image bits: 1 black, 0 white, row-padded. Width/height never scales an asset.
 - For browser-only failures consult [web-console.md](web-console.md); do not
   reflash firmware just because the browser blocks a local network request.

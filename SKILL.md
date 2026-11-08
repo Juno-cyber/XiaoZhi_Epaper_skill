@@ -1,9 +1,9 @@
 ---
 name: xiaozhi-control
-description: Discover and control XiaoZhi e-paper devices on a trusted LAN, including pages, text, images, voice-server URL and home-page settings. Use for device operation over local HTTP, not cloud/MQTT control.
+description: Discover and control XiaoZhi e-paper devices on a trusted LAN, including pages, images, home-page settings, XiaoZhi/Qwen voice configuration, and local Agent management. Use for device operation over local HTTP, not cloud/MQTT control.
 license: MIT
 metadata:
-  version: 3.1.0
+  version: 3.2.0
   author: Juno-cyber
   platforms: [linux, macos, windows]
   prerequisites:
@@ -18,7 +18,7 @@ metadata:
 
 Operate from this skill directory. Core scripts use Python 3.10+ standard library;
 on Windows replace `python3` with `py -3 -X utf8`. No curl, Bash, SDK or browser
-is needed for normal control. Current reference: firmware **2.5.2.4**, 296×128.
+is needed for normal control. Current reference: firmware **2.5.2.8**, 296×128.
 
 ## Connect, then choose one path
 
@@ -40,10 +40,12 @@ python3 scripts/xiaozhi.py DEVICE_IP elements 2
 python3 scripts/xiaozhi.py DEVICE_IP show 2
 python3 scripts/xiaozhi.py DEVICE_IP home
 python3 scripts/xiaozhi.py DEVICE_IP voice
+python3 scripts/xiaozhi.py DEVICE_IP voice-config
 ```
 
-For home-page settings, rename, raw tool calls or voice URL configuration, read
-[api-reference.md](references/api-reference.md). CLI output is decoded JSON;
+For home-page settings, rename, raw tool calls or XiaoZhi URL configuration, read
+[api-reference.md](references/api-reference.md). For Qwen realtime or local Agent
+management, read [voice-and-agent.md](references/voice-and-agent.md). CLI output is decoded JSON;
 errors exit nonzero. HTTP success alone does not prove tool success.
 
 **Build a layout:** write a UTF-8 `.layout` file and use the builder:
@@ -78,7 +80,11 @@ and merged into that final call; it must target the page being built. With neith
   Always list pages and use `builtin:false`; create missing pages first.
   Fridge inventory/stats/recipes and love/memorial counters are suspended.
   The `fridge.page.*` prefix remains the display API, not active fridge business.
-- Keep important content within x=5–291, y=2–126. Fonts: 12/16; custom `clock`
+- Live time/date must use native `dynamic_type=clock/date` elements, never pixels
+  baked into a bitmap. Historical publication dates, durations and explicitly
+  labeled historical previews stay fixed. Read [display preferences](references/display-preferences.md)
+  when updating this user’s canvases.
+- Keep important content within x=5–291, y=2–126. Fonts: 12/14/16; custom `clock`
   also supports 56. At most 30 elements per layout. Built-in pixel art is 24×24;
   image `w/h` describes raw storage and does not resize it.
 - For full-width centered/right text use x=10 and `max_width=276`. All custom
@@ -91,6 +97,7 @@ and merged into that final call; it must target the page being built. With neith
 | Task | Reference |
 |---|---|
 | Tool parameters, config, bitmap format | [API](references/api-reference.md) |
+| Qwen realtime, voice modes, tasks or memory | [Voice and Agent](references/voice-and-agent.md) |
 | Custom pages, clocks, persistence | [Custom pages](references/custom-pages.md) |
 | Discovery, failed writes, extra refreshes | [Troubleshooting](references/pitfalls.md) |
 | Layout examples / creative choices | [Templates](references/page-templates.md) / [Design](references/display-philosophy.md) |

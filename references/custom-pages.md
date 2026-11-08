@@ -1,6 +1,6 @@
 # Custom pages and dynamic elements
 
-Firmware 2.5.2.4. Page 1 is fixed read-only chat. Existing pages 2–15
+Firmware 2.5.2.8. Page 1 is fixed read-only chat. Existing pages 2–15
 persist user layouts, including migrated page 6. Default page 2, 时间显示,
 contains time/date/image; preserve it unless the user wants to replace it.
 
@@ -24,7 +24,8 @@ line compatibility fields and reorder side effects: [API](api-reference.md).
 
 ## Layout and persistence
 
-Fonts 12/16, plus 56 for device clocks. Text alignment uses `max_width` (default 276px);
+Fonts are WenQuanYi 12/14/16, plus Fredoka 56 for device clocks; see
+[font compatibility and user preferences](display-preferences.md). Text alignment uses `max_width` (default 276px);
 this field is supported and must survive backup/restore. Use x=10 for full-screen center/right.
 Builder caps layouts at 30 elements with unique IDs. The order of add commands
 is the draw order. `update` changes text only; add with the same ID replaces geometry.
@@ -38,8 +39,8 @@ see [failure recovery](pitfalls.md). Do not clear just to update one value.
 
 | `dynamic_type` | Value | Fonts |
 |---|---|---|
-| `clock` | `HH:MM` | 12, 16, 56 |
-| `date` | `YYYY-MM-DD 周X` | 12, 16 |
+| `clock` | `HH:MM` | 12, 14, 16, 56 |
+| `date` | `YYYY-MM-DD 周X` | 12, 14, 16 |
 
 ```text
 clear
@@ -47,6 +48,10 @@ text id=clock text="--:--" x=10 y=8 font_size=56 align=center dynamic=true dynam
 text id=date text="日期" x=10 y=88 font_size=12 align=center dynamic=true dynamic_type=date
 refresh
 ```
+
+Use these elements for live time/date, including on illustrated canvases. Do not
+bake a live time/date into a background image. Fixed historical dates and durations
+remain static.
 
 Dynamic type is returned as `dtype`; initial `text` is ignored and the device
 computes the value. Time must be synchronized. Unchanged values do not cause

@@ -1,8 +1,8 @@
 # XiaoZhi E-Paper Skill
 
-让 Agent 通过局域网操控小智墨水屏。支持画布、自定义页面、时钟、图片、语音服务器 URL、设备名称与常驻页设置。
+让 Agent 通过局域网操控小智墨水屏。支持画布、自定义页面、时钟、图片、语音模式、设备名称、常驻页与本地 Agent 管理。
 
-**Agent 从 [SKILL.md](SKILL.md) 开始，不需要通读仓库。** 当前契约对齐固件 **2.5.2.4**（`052d39e`）与 Litsea_Top（`9bc7bdc`）。对话页 1 只读，已创建的 2–15 页均为自定义页；默认第 2 页为“时间显示”。冰箱业务和恋爱计时已挂起，旧版固件不属于当前脚本的支持基线。
+**Agent 从 [SKILL.md](SKILL.md) 开始，不需要通读仓库。** 当前契约对齐固件 **2.5.2.8**（`c672093`）与 2026-11-08 部署的 Litsea_Top。对话页 1 只读，已创建的 2–15 页均为自定义页；默认第 2 页为“时间显示”。冰箱业务和恋爱计时已挂起，旧版固件不属于当前脚本的支持基线。
 
 ## 快速使用
 
@@ -29,7 +29,12 @@ python3 scripts/quick_page_builder.py DEVICE_IP PAGE_ID templates/hello.layout -
 ```bash
 python3 scripts/xiaozhi.py DEVICE_IP voice
 python3 scripts/xiaozhi.py DEVICE_IP voice --url wss://api.tenclass.net/xiaozhi/v1/
+python3 scripts/xiaozhi.py DEVICE_IP voice-config
 ```
+
+端到端实时语音使用 revision 配置文件提交，API Key 不会回读；本地 Agent
+状态可用 `python3 scripts/xiaozhi.py DEVICE_IP agent` 查询。写入示例和任务、
+记忆边界见 [语音与 Agent](references/voice-and-agent.md)。
 
 其他常用操作：
 
@@ -79,6 +84,8 @@ python3 scripts/quick_page_builder.py 127.0.0.1 6 templates/hello.layout --check
 ```
 
 可选依赖：`python3 -m pip install -r requirements-optional.txt`。Linux 可直接运行全套测试；跨系统核心测试见 `tests/test_control.py`，Windows/macOS 专用分支用模拟输入覆盖，实际环境仍需验证。
+
+2026-11-08 对齐固件 2.5.2.8：补充千问实时语音、Agent 管理、OTA 保留手动语音配置、14 px/Fredoka 字体，以及网站动态元素暂存和切页完整回读契约。79 项自动化测试和 skill 格式校验通过；模拟 HTTP 测试覆盖 revision 配置和只读 Agent 状态，实机写入仍应按请求单独验证。
 
 2026-10-24 对齐固件 2.5.2.4：76 项自动化测试及 skill 格式校验通过；实机只读验证健康信息、页面列表、时间页元素/可恢复快照、常驻页及语音 URL 查询。设备仅有 1、2、3 页，缺失的第 6 页被正确拒绝。语音写入和重建回滚由模拟 HTTP/设备测试覆盖；本轮未改写实机页面、语音地址或重启设备。
 
