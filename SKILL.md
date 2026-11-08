@@ -1,16 +1,16 @@
 ---
 name: yunmo-control
-description: Discover and control Yunmo (云墨) e-paper devices on a trusted LAN, including pages, images, home-page settings, XiaoZhi/Qwen voice backend configuration, and local Agent management. Use for device operation over local HTTP, not cloud/MQTT control.
+description: Discover and control Yunmo (云墨) e-paper devices on a trusted LAN, including pages, images, home-page settings, standard/Qwen realtime voice configuration, and local Agent management. Use for device operation over local HTTP, not cloud/MQTT control.
 license: MIT
 metadata:
-  version: 3.2.2
+  version: 3.2.4
   author: Juno-cyber
   platforms: [linux, macos, windows]
   prerequisites:
     commands: [python3]
-  tags: [yunmo, xiaozhi, esp32, smart-home, iot, lan-control]
+  tags: [yunmo, esp32, smart-home, iot, lan-control]
   hermes:
-    tags: [yunmo, xiaozhi, esp32, smart-home, iot, lan-control]
+    tags: [yunmo, esp32, smart-home, iot, lan-control]
     related_skills: [openhue]
 ---
 
@@ -20,21 +20,29 @@ Operate from this skill directory. Core scripts use Python 3.10+ standard librar
 on Windows replace `python3` with `py -3 -X utf8`. No curl, Bash, SDK or browser
 is needed for normal control. Current reference: firmware **2.5.2.8**, 296×128.
 
-## Product naming in conversation
+## Before device control
 
-- Call the product and each controlled e-paper device **云墨** in all user-facing
-  conversation, status reports, prompts and generated page copy. Do not call the
-  device “小智”, “XiaoZhi” or “喵喵同学”.
+Once per working session, run the bounded update check before the first device
+operation:
+
+```bash
+python3 scripts/check_update.py --timeout 8
+```
+
+It only fast-forwards a clean `main` checkout from the trusted upstream and then
+syncs the installed copy. Timeout, offline access, local edits, a different remote,
+or diverged history must never block device control; continue with the current
+version when the script reports that the check was skipped.
+
+## Product naming
+
+- Call the product and each controlled e-paper device **云墨** in user-facing
+  conversation, status reports, prompts and generated page copy. The current
+  board model is `Yunmo_x1`.
 - For multiple devices, use `云墨（设备名称）` when a saved name exists, otherwise
   use a clear location or short MAC suffix such as `云墨（书桌）` or `云墨（A1B2）`.
   Confirm device identity before writes; never guess which 云墨 the user means.
-- `xiaozhi.py`, `xiaozhi-control`, mDNS names, board identifiers and the saved
-  voice-mode value `xiaozhi` are compatibility identifiers. Keep them unchanged
-  in commands and API payloads, but do not use them as the product name.
-- Say **小智后端** only when distinguishing that voice backend from **千问实时语音**.
-  Changing a backend does not rename the 云墨 device.
-- Do not change the device's persisted name merely to match this vocabulary. Use
-  `name --set` only when the user explicitly asks to rename that device.
+- Use `name --set` only when the user explicitly asks to rename a device.
 
 ## Connect, then choose one path
 
@@ -59,7 +67,7 @@ python3 scripts/xiaozhi.py DEVICE_IP voice
 python3 scripts/xiaozhi.py DEVICE_IP voice-config
 ```
 
-For home-page settings, rename, raw tool calls or XiaoZhi URL configuration, read
+For home-page settings, rename, raw tool calls or standard voice URL configuration, read
 [api-reference.md](references/api-reference.md). For Qwen realtime or local Agent
 management, read [voice-and-agent.md](references/voice-and-agent.md). CLI output is decoded JSON;
 errors exit nonzero. HTTP success alone does not prove tool success.

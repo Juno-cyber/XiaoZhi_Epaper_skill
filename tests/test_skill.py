@@ -520,7 +520,7 @@ class DeploymentTests(unittest.TestCase):
             os.makedirs(target)
             os.makedirs(outside)
             os.symlink(outside, os.path.join(target, "scripts"))
-            env = dict(os.environ, XIAOZHI_SKILL_DIR=target)
+            env = dict(os.environ, YUNMO_SKILL_DIR=target)
             result = subprocess.run(
                 ["bash", os.path.join(ROOT, "deploy.sh")],
                 env=env,

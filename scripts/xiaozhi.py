@@ -59,7 +59,7 @@ def main(argv=None):
     name.add_argument("--set", dest="new_name", help="empty string resets the default name")
     voice = sub.add_parser("voice", help="read/set WebSocket URL only; restart separately to apply")
     voice.add_argument("--url", help="ws:// or wss:// URL; omitted means read only")
-    voice_config = sub.add_parser("voice-config", help="read Yunmo voice configuration (XiaoZhi/Qwen backends)")
+    voice_config = sub.add_parser("voice-config", help="read Yunmo voice configuration (standard/Qwen realtime)")
     voice_config.add_argument("--config-file", help="POST a revisioned JSON patch, or - for stdin")
     agent = sub.add_parser("agent", help="read Agent state or submit an explicit Agent API request")
     agent.add_argument("--request-file", help="JSON request object, or - for stdin; omitted sends op=get")

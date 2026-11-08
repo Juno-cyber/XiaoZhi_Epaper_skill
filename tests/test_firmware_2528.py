@@ -73,7 +73,7 @@ class VoiceHttpTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 requests.append(('GET', self.path, None))
-                self.respond({"status":"ok","board":"test","version":"2.5.2.8"} if self.path=='/' else {"url":"wss://old.example/voice"})
+                self.respond({"status":"ok","board":"Yunmo_x1","version":"2.5.2.8"} if self.path=='/' else {"url":"wss://old.example/voice"})
             def do_POST(self):
                 body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 requests.append(('POST',self.path,body));self.respond(body)
@@ -100,7 +100,7 @@ class VoiceHttpTests(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 requests.append(("GET", self.path, None))
-                self.respond({"status":"ok","board":"test","version":"2.5.2.8"}
+                self.respond({"status":"ok","board":"Yunmo_x1","version":"2.5.2.8"}
                              if self.path == "/" else voice_state)
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))

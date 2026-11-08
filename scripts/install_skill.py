@@ -2,14 +2,37 @@
 """Install this skill for Hermes, Codex or an explicit agent directory."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 SOURCE = Path(__file__).resolve().parent.parent
 GROUPS = {"scripts": ("*.py",), "references": ("*.md",),
           "templates": ("*.sh", "*.md", "*.svg", "*.layout")}
+SOURCE_RECORD = ".yunmo-source.json"
+
+
+def source_remote():
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"], cwd=SOURCE,
+            capture_output=True, text=True, timeout=2, check=True)
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def source_commit():
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=SOURCE,
+            capture_output=True, text=True, timeout=2, check=True)
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def install(target, dry_run=False):
@@ -37,6 +60,12 @@ def install(target, dry_run=False):
         print(f"REMOVE stale {path}")
         if not dry_run:
             path.unlink()
+    print(f"WRITE {SOURCE_RECORD} -> {target / SOURCE_RECORD}")
+    if not dry_run:
+        (target / SOURCE_RECORD).write_text(json.dumps({
+            "source": str(SOURCE), "remote": source_remote(),
+            "commit": source_commit(),
+        }, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"{'Dry run complete' if dry_run else 'Deployed'}: {target}")
 
 
@@ -50,8 +79,7 @@ def main(argv=None):
         default = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills" / "yunmo-control"
     else:
         default = Path.home() / ".hermes" / "skills" / "smart-home" / "yunmo-control"
-    install(args.target or os.environ.get("YUNMO_SKILL_DIR") or
-            os.environ.get("XIAOZHI_SKILL_DIR") or default, args.dry_run)
+    install(args.target or os.environ.get("YUNMO_SKILL_DIR") or default, args.dry_run)
     return 0
 
 

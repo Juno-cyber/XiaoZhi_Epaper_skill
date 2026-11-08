@@ -12,6 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import crash_log
+import check_update
 import install_skill
 import legacy_canvas_push
 import quick_page_builder as builder
@@ -204,12 +205,13 @@ class DiscoveryTests(unittest.TestCase):
             self.assertEqual([str(n) for n in discovery.local_networks()], ["192.168.12.0/24"])
 
     def test_cache_override_is_agent_independent(self):
-        with mock.patch.dict(os.environ, {"XIAOZHI_CACHE_FILE":"~/my-xiaozhi-cache"}):
-            self.assertEqual(discovery.default_cache_file(), os.path.expanduser("~/my-xiaozhi-cache"))
+        with mock.patch.dict(os.environ, {"YUNMO_CACHE_FILE":"~/my-yunmo-cache"}):
+            self.assertEqual(discovery.default_cache_file(), os.path.expanduser("~/my-yunmo-cache"))
 
-    def test_legacy_cache_still_supplies_candidate(self):
-        with mock.patch.object(discovery, "read_cache", side_effect=[[],["192.168.1.8"],[]]):
-            self.assertEqual(discovery.cached_addresses(), ["192.168.1.8"])
+    def test_cache_reads_only_configured_location(self):
+        with mock.patch.object(discovery, "read_cache", return_value=["192.168.1.8"]) as read:
+            self.assertEqual(discovery.cached_addresses("/tmp/yunmo-devices"), ["192.168.1.8"])
+            read.assert_called_once_with("/tmp/yunmo-devices")
 
 
 class ControlCliTests(unittest.TestCase):
@@ -290,6 +292,10 @@ class InstallTests(unittest.TestCase):
             install_skill.install(target)
             self.assertTrue((target/"scripts"/"xiaozhi.py").exists())
             self.assertTrue((target/"templates"/"hello.layout").exists())
+            self.assertTrue((target/"scripts"/"check_update.py").exists())
+            source_record = json.loads((target/".yunmo-source.json").read_text())
+            self.assertEqual(Path(source_record["source"]), install_skill.SOURCE)
+            self.assertTrue(source_record["commit"])
             self.assertFalse((target/"scripts"/"old.py").exists())
             self.assertEqual((target/"notes.txt").read_text(), "keep")
 
@@ -303,6 +309,49 @@ class InstallTests(unittest.TestCase):
         for target in (install_skill.SOURCE, install_skill.SOURCE/"installed", Path.home()):
             with self.subTest(target=target), self.assertRaises(ValueError):
                 install_skill.install(target, dry_run=True)
+
+
+class UpdateCheckTests(unittest.TestCase):
+    def test_remote_normalization_accepts_https_and_ssh(self):
+        expected = "https://github.com/juno-cyber/xiaozhi_epaper_skill"
+        self.assertEqual(check_update.canonical_remote(
+            "git@github.com:Juno-cyber/XiaoZhi_Epaper_skill.git"), expected)
+        self.assertEqual(check_update.canonical_remote(
+            "https://github.com/Juno-cyber/XiaoZhi_Epaper_skill.git"), expected)
+
+    def test_main_never_blocks_when_update_is_skipped(self):
+        output = io.StringIO()
+        with mock.patch.object(check_update, "update",
+                               side_effect=check_update.UpdateSkipped("检查超时")), \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(check_update.main(["--timeout", "1"]), 0)
+        self.assertIn("继续使用当前版本", output.getvalue())
+
+    def test_local_ahead_is_current_without_merge(self):
+        calls = []
+
+        def fake_git(source, args, deadline):
+            calls.append(args)
+            if args[:3] == ["remote", "get-url", "origin"]:
+                return mock.Mock(stdout="git@github.com:Juno-cyber/XiaoZhi_Epaper_skill.git\n")
+            if args[:2] == ["branch", "--show-current"]:
+                return mock.Mock(stdout="main\n")
+            if args[:2] == ["status", "--porcelain"]:
+                return mock.Mock(stdout="")
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return mock.Mock(stdout="local\n")
+            if args[:2] == ["rev-parse", "origin/main"]:
+                return mock.Mock(stdout="remote\n")
+            if args == ["merge-base", "--is-ancestor", "local", "remote"]:
+                raise check_update.UpdateSkipped("not ancestor")
+            return mock.Mock(stdout="")
+
+        with mock.patch.object(check_update, "locate_source",
+                               return_value=(Path("/repo"), False, "")), \
+             mock.patch.object(check_update, "run_git", side_effect=fake_git):
+            self.assertEqual(check_update.update(timeout=2), "current")
+        self.assertIn(["merge-base", "--is-ancestor", "remote", "local"], calls)
+        self.assertFalse(any(args[0] == "merge" for args in calls))
 
 
 if __name__ == "__main__":

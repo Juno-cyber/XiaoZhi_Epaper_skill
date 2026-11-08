@@ -3,7 +3,7 @@
 Read this reference only for voice-mode configuration, Qwen realtime access,
 scheduled tasks, memory, or session management. Firmware baseline: 2.5.2.8.
 
-## XiaoZhi and Qwen realtime
+## Standard and Qwen realtime voice
 
 `GET /api/voice_config` returns the saved mode and the currently running mode.
 The response includes `revision`, `mode`, `active_mode`, `realtime_url`,
@@ -34,8 +34,8 @@ it. A stale revision is rejected. Save success means the next connection can use
 the configuration; mode changes require a restart and the CLI never restarts the
 device automatically.
 
-Supported modes are `xiaozhi` and `qwen`; an `agent` compatibility mode remains
-in the firmware but is not the normal website choice. The Qwen URL must be WSS,
+Supported API mode values are `xiaozhi` (standard voice) and `qwen` (Qwen realtime).
+The Qwen URL must be WSS,
 at most 512 bytes, and must not contain a query string. New devices expose this
 template until a real workspace is configured:
 
@@ -48,8 +48,8 @@ URL or key is allowed for configuration but produces a device prompt instead of
 a connection. Model and voice IDs must match the account's permissions; changing
 only a URL does not adapt another vendor's event or audio protocol.
 
-The older `voice` command controls only the XiaoZhi backend WebSocket URL through
-`/api/websocket_url`. Manual XiaoZhi and Qwen modes still perform OTA checks while
+The `voice` command controls the standard voice WebSocket URL through
+`/api/websocket_url`. Both voice modes still perform OTA checks while
 preserving their saved voice configuration and ignoring OTA activation/voice
 overrides. Voice mode never changes the OTA address, Wi-Fi, screen layouts, or
 AEC settings.

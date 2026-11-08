@@ -22,18 +22,17 @@ DISCOVERY_PORT = 50001
 DISCOVERY_MAGIC = b"XIAOZHI_DISCOVER"
 DISCOVERY_RESPONSE = b"XIAOZHI_HERE"
 def default_cache_file():
-    override = os.environ.get("XIAOZHI_CACHE_FILE")
+    override = os.environ.get("YUNMO_CACHE_FILE")
     if override:
         return os.path.abspath(os.path.expanduser(override))
     if sys.platform == "win32":
         root = os.environ.get("LOCALAPPDATA", os.path.expanduser("~/AppData/Local"))
     else:
         root = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
-    return os.path.join(root, "xiaozhi", "devices.txt")
+    return os.path.join(root, "yunmo", "devices.txt")
 
 
 DEFAULT_CACHE_FILE = default_cache_file()
-LEGACY_CACHE_FILES = [os.path.expanduser("~/.hermes/xiaozhi_ip.txt"), os.path.expanduser("~/.cache/xiaozhi_ip.txt")]
 DEFAULT_TIMEOUT = 3.0
 DEFAULT_SCAN_TIMEOUT = 2.0
 DEFAULT_WORKERS = 16
@@ -168,7 +167,7 @@ def read_cache(path=DEFAULT_CACHE_FILE):
 
 
 def cached_addresses(path=DEFAULT_CACHE_FILE):
-    paths = [path] + (LEGACY_CACHE_FILES if path == DEFAULT_CACHE_FILE else [])
+    paths = [path]
     return unique_private_ipv4(address for source in paths for address in read_cache(source))
 
 

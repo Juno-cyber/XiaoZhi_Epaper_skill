@@ -41,8 +41,8 @@ Safari/Firefox may use the explicit HTTP compatibility entry. If a system proxy
 is active, bypass private LAN ranges and `.local` in its configuration. Python
 clients in this skill explicitly bypass environment proxies; TUN/VPN routing is
 still an OS concern. CORS is separate from network reachability.
-The console tabs are 墨水屏页面 / 画布绘制 / 语音配置. XiaoZhi URL read/save uses
-`/api/websocket_url`; XiaoZhi/Qwen mode settings use `/api/voice_config`. Neither
+The console tabs are 墨水屏页面 / 画布绘制 / 语音配置. Standard voice URL read/save uses
+`/api/websocket_url`; standard/Qwen mode settings use `/api/voice_config`. Neither
 changes OTA. Page lists come from the device.
 The web console includes device name, home page and timeout controls; 0 means
 no automatic return. Connect directly to a known LAN device when appropriate.

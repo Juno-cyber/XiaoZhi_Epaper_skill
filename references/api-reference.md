@@ -34,7 +34,7 @@ CLI errors are nonzero; output is decoded JSON. No automatic write retries.
 
 | Method / path | Input / response |
 |---|---|
-| `GET /` | `status,board,name,version,idf_version,wifi_connected,mac,hostname,mdns,ip,http_port,http_url,mdns_url` |
+| `GET /` | `status,board,name,version,idf_version,wifi_connected,mac,hostname,mdns,ip,http_port,http_url,mdns_url`; current `board` is `Yunmo_x1` |
 | `POST /api/call` | `{"tool":"fridge.…","args":{…}}`; simplified MCP call |
 | `POST /mcp` | JSON-RPC `tools/list` or `tools/call`; not the simplified format |
 | `GET /api/device_name` | `{status,name}` |
@@ -47,7 +47,7 @@ CLI errors are nonzero; output is decoded JSON. No automatic write retries.
 | `GET /api/websocket_url` | `{url}` only; no token returned |
 | `POST /api/websocket_url` | `{url}` only; persists selection; restart separately to apply |
 | `GET/POST /api/websocket` | Advanced enabled/url/token/version configuration; see below |
-| `GET/POST /api/voice_config` | Revisioned XiaoZhi/Qwen mode and realtime configuration; key is never returned |
+| `GET/POST /api/voice_config` | Revisioned standard/Qwen mode and realtime configuration; key is never returned |
 | `POST /api/agent` | Agent state/config/tasks/memory/session operations; request uses an `op` field |
 | `GET /api/agent/session_log?mode=…` | Sensitive pipeline/realtime NDJSON history export |
 | `GET /ui` | Firmware's local configuration UI |

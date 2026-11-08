@@ -14,8 +14,9 @@ board configuration and flash instructions; this skill does not duplicate them.
 - Current branch uses ESP-IDF **6.0.1+**, validated with **6.1**.
 - Historical `jzx/xiaozhi_2.0.8` uses IDF 5.4.2. Use a separate checkout and
   build environment; do not reuse build/config/dependency artifacts across them.
-- Active board: `bread-compact-wifi-epaperx`, 16MB flash; retain NVS and
-  `canvas_data` when updating firmware. A routine control task never needs erase.
+- Active internal board type: `bread-compact-wifi-epaperx`, public model
+  `Yunmo_x1`, 16MB flash; retain NVS and `canvas_data` when updating firmware.
+  A routine control task never needs erase.
 - Serial names vary: Linux `/dev/ttyUSB*`, macOS `/dev/cu.*`, Windows `COM*`.
   Identify the actual device instead of assuming `/dev/ttyUSB0`.
 
