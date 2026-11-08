@@ -3,7 +3,7 @@ name: yunmo-control
 description: Discover and control Yunmo (云墨) e-paper devices on a trusted LAN, including pages, images, home-page settings, XiaoZhi/Qwen voice backend configuration, and local Agent management. Use for device operation over local HTTP, not cloud/MQTT control.
 license: MIT
 metadata:
-  version: 3.2.1
+  version: 3.2.2
   author: Juno-cyber
   platforms: [linux, macos, windows]
   prerequisites:
@@ -19,6 +19,22 @@ metadata:
 Operate from this skill directory. Core scripts use Python 3.10+ standard library;
 on Windows replace `python3` with `py -3 -X utf8`. No curl, Bash, SDK or browser
 is needed for normal control. Current reference: firmware **2.5.2.8**, 296×128.
+
+## Product naming in conversation
+
+- Call the product and each controlled e-paper device **云墨** in all user-facing
+  conversation, status reports, prompts and generated page copy. Do not call the
+  device “小智”, “XiaoZhi” or “喵喵同学”.
+- For multiple devices, use `云墨（设备名称）` when a saved name exists, otherwise
+  use a clear location or short MAC suffix such as `云墨（书桌）` or `云墨（A1B2）`.
+  Confirm device identity before writes; never guess which 云墨 the user means.
+- `xiaozhi.py`, `xiaozhi-control`, mDNS names, board identifiers and the saved
+  voice-mode value `xiaozhi` are compatibility identifiers. Keep them unchanged
+  in commands and API payloads, but do not use them as the product name.
+- Say **小智后端** only when distinguishing that voice backend from **千问实时语音**.
+  Changing a backend does not rename the 云墨 device.
+- Do not change the device's persisted name merely to match this vocabulary. Use
+  `name --set` only when the user explicitly asks to rename that device.
 
 ## Connect, then choose one path
 
