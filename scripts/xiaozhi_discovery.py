@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover one or more xiaozhi devices on local IPv4 networks."""
+"""Discover one or more Yunmo devices on local IPv4 networks."""
 
 import argparse
 import http.client
@@ -427,7 +427,7 @@ def discover(networks, port=DEFAULT_PORT, all_devices=False, verbose=False,
 
 
 def make_parser():
-    parser = argparse.ArgumentParser(description="Discover xiaozhi devices on local IPv4 networks")
+    parser = argparse.ArgumentParser(description="Discover Yunmo devices on local IPv4 networks")
     parser.add_argument("--health", action="store_true", help="print health JSON to stderr")
     parser.add_argument("--json", action="store_true", help="print a JSON array with IP, identity and firmware")
     parser.add_argument("--host", action="append", default=[], help="probe only this LAN IP/hostname; repeatable")
@@ -477,7 +477,7 @@ def main(argv=None):
     if not devices:
         if args.json:
             print("[]")
-        print("No XiaoZhi found. Check same LAN/Wi-Fi and power; try --host IP or --subnet CIDR --scan-timeout 4. VPN/guest isolation may block discovery.", file=sys.stderr)
+        print("No Yunmo device found. Check same LAN/Wi-Fi and power; try --host IP or --subnet CIDR --scan-timeout 4. VPN/guest isolation may block discovery.", file=sys.stderr)
         return 1
     addresses = list(devices)
     if args.save:

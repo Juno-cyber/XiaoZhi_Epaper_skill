@@ -28,7 +28,7 @@ Reference [the cron prompt template](../templates/canvas-creativity-cron-prompt.
 Use the installed template path in the job prompt:
 
 ~~~text
-严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md 中「Prompt 正文」的全部指令。
+严格读取并执行 ~/.hermes/skills/smart-home/yunmo-control/templates/canvas-creativity-cron-prompt.md 中「Prompt 正文」的全部指令。
 ~~~
 
 Create or change schedules only when requested, and report the scheduler's

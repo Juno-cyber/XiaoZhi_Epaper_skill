@@ -1,11 +1,11 @@
 # 画布自动刷新 Cron Prompt 模板
 
-> 适用：xiaozhi 墨水屏设备（固件 2.5.2.8，已有自定义页面），每 30 分钟自动刷新 canvas 画布。
+> 适用：云墨墨水屏设备（固件 2.5.2.8，已有自定义页面），每 30 分钟自动刷新 canvas 画布。
 > 用法：让 cronjob 引用本文件；设备地址在运行时自动发现，不在模板中保存私有配置。
 > 关联：`references/canvas-creativity.md`（三层防重复机制）、`references/hermes-workflow.md`（cron 模式说明）。
 >
 > 本文件统一维护定时刷新规则。cron job 的 prompt 只写一行引用：
->   「严格读取并执行 ~/.hermes/skills/smart-home/xiaozhi-control/templates/canvas-creativity-cron-prompt.md
+>   「严格读取并执行 ~/.hermes/skills/smart-home/yunmo-control/templates/canvas-creativity-cron-prompt.md
 >    中『Prompt 正文』的全部指令。文件缺失或无法读取时直接报错结束，禁止自行发挥。」
 > 更新本文件并部署到运行任务的机器后，下次任务会读取新规则。
 
@@ -16,16 +16,16 @@
 #   schedule: "every 30m"
 #   deliver: "local"
 #   enabled_toolsets: ["terminal", "file"]
-#   skills: ["xiaozhi-control"]
+#   skills: ["yunmo-control"]
 #   prompt: <一行引用指令，见上方说明>
 ```
 
 ## Prompt 正文
 
 ```
-## 任务：刷新 xiaozhi ESP32 墨水屏画布
+## 任务：刷新云墨 ESP32 墨水屏画布
 
-设备地址必须在每次运行时通过 `python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/xiaozhi_discovery.py` 发现；禁止写死 IP。随后 GET / 确认 `status=ok` 和预期板型，再进行任何写操作。
+设备地址必须在每次运行时通过 `python3 ~/.hermes/skills/smart-home/yunmo-control/scripts/xiaozhi_discovery.py` 发现；禁止写死 IP。随后 GET / 确认 `status=ok` 和预期板型，再进行任何写操作。
 固件 2.5.2.8 使用页面聚合接口；先从健康响应读取版本，再列出页面确认目标为 builtin:false。第 6 页也是自定义页，不能假定它始终存在。
 
 ### 时间窗口判断
@@ -79,7 +79,7 @@ heart, star, note, diamond, smiley, arrow, check, sun, moon, house, bolt, coffee
 1. 确认时间在窗口内，否则静默退出
 2. 读取历史台账和素材池，按意图权重选主意图
 3. **主文案必须来自文案API，逐字使用其输出**：
-   运行 `python3 ~/.hermes/skills/smart-home/xiaozhi-control/scripts/quote_fetcher.py`
+   运行 `python3 ~/.hermes/skills/smart-home/yunmo-control/scripts/quote_fetcher.py`
    返回格式：`「text」 — source`
    - 主文案 = 输出中的 `text` **原句**。只允许截断或拆行适配屏幕宽度（16px 每行 ≤18 字），**禁止改写、禁止另写、禁止拼接素材池句子**
    - 出处脚注 = 输出中的 `source` **原串逐字照抄**（含 ASCII `-` 分隔符，例如"一言-红楼梦"；⚠️ 固件字库不支持 U+00B7「·」与 U+30FB「・」，禁止使用）。禁止重打、禁止替换或删除分隔符、禁止自编出处

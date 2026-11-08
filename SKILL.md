@@ -1,20 +1,20 @@
 ---
-name: xiaozhi-control
-description: Discover and control XiaoZhi e-paper devices on a trusted LAN, including pages, images, home-page settings, XiaoZhi/Qwen voice configuration, and local Agent management. Use for device operation over local HTTP, not cloud/MQTT control.
+name: yunmo-control
+description: Discover and control Yunmo (云墨) e-paper devices on a trusted LAN, including pages, images, home-page settings, XiaoZhi/Qwen voice backend configuration, and local Agent management. Use for device operation over local HTTP, not cloud/MQTT control.
 license: MIT
 metadata:
-  version: 3.2.0
+  version: 3.2.1
   author: Juno-cyber
   platforms: [linux, macos, windows]
   prerequisites:
     commands: [python3]
-  tags: [xiaozhi, esp32, smart-home, iot, lan-control]
+  tags: [yunmo, xiaozhi, esp32, smart-home, iot, lan-control]
   hermes:
-    tags: [xiaozhi, esp32, smart-home, iot, lan-control]
+    tags: [yunmo, xiaozhi, esp32, smart-home, iot, lan-control]
     related_skills: [openhue]
 ---
 
-# XiaoZhi LAN control
+# 云墨 LAN control
 
 Operate from this skill directory. Core scripts use Python 3.10+ standard library;
 on Windows replace `python3` with `py -3 -X utf8`. No curl, Bash, SDK or browser

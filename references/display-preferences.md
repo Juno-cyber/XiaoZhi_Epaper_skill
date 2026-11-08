@@ -1,4 +1,4 @@
-# Display preferences for Juno’s XiaoZhi
+# Display preferences for Juno’s 云墨
 
 User-selected defaults (2026-10-25), not a universal requirement for other users:
 

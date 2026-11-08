@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build xiaozhi e-paper canvas/custom pages from a small validated DSL."""
+"""Build Yunmo e-paper canvas/custom pages from a small validated DSL."""
 
 import argparse
 import http.client
@@ -170,7 +170,7 @@ class DeviceClient:
         except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise BuildError(f"device identity check failed: {exc}") from exc
         if not isinstance(data, dict) or data.get("status") != "ok" or not isinstance(data.get("board"), str) or not data["board"]:
-            raise BuildError("target is not an identifiable xiaozhi device")
+            raise BuildError("target is not an identifiable Yunmo device")
         return data
 
     @staticmethod
@@ -672,7 +672,7 @@ def build_page(client, page, layout_text, delay=0.0, output=print, backup_path=N
 
 
 def make_parser():
-    parser = argparse.ArgumentParser(description="Build a validated xiaozhi e-paper layout")
+    parser = argparse.ArgumentParser(description="Build a validated Yunmo e-paper layout")
     parser.add_argument("host", help="private/LAN device IP or hostname (without http://)")
     parser.add_argument("page", type=int, help="existing custom page 2-15; list pages first")
     parser.add_argument("layout", nargs="?", default="-", help="layout file, or - for stdin")

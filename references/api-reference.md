@@ -13,7 +13,7 @@ python3 scripts/xiaozhi.py DEVICE_IP layout 2
 python3 scripts/xiaozhi.py DEVICE_IP show 7
 python3 scripts/xiaozhi.py DEVICE_IP home
 python3 scripts/xiaozhi.py DEVICE_IP home --page 7 --timeout-min 2
-python3 scripts/xiaozhi.py DEVICE_IP name --set "书桌小智"
+python3 scripts/xiaozhi.py DEVICE_IP name --set "书桌云墨"
 python3 scripts/xiaozhi.py DEVICE_IP voice
 python3 scripts/xiaozhi.py DEVICE_IP voice --url wss://api.tenclass.net/xiaozhi/v1/
 python3 scripts/xiaozhi.py DEVICE_IP call fridge.page.element.control --args-file args.json

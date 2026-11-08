@@ -47,10 +47,11 @@ def main(argv=None):
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     if args.agent == "codex":
-        default = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills" / "xiaozhi-control"
+        default = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills" / "yunmo-control"
     else:
-        default = Path.home() / ".hermes" / "skills" / "smart-home" / "xiaozhi-control"
-    install(args.target or os.environ.get("XIAOZHI_SKILL_DIR") or default, args.dry_run)
+        default = Path.home() / ".hermes" / "skills" / "smart-home" / "yunmo-control"
+    install(args.target or os.environ.get("YUNMO_SKILL_DIR") or
+            os.environ.get("XIAOZHI_SKILL_DIR") or default, args.dry_run)
     return 0
 
 

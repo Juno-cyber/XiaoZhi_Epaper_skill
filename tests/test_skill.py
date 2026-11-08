@@ -499,7 +499,7 @@ class DeploymentTests(unittest.TestCase):
                 handle.write("stale")
             with open(os.path.join(target, "scripts", "keep.bin"), "w", encoding="utf-8") as handle:
                 handle.write("unmanaged")
-            env = dict(os.environ, XIAOZHI_SKILL_DIR=target)
+            env = dict(os.environ, YUNMO_SKILL_DIR=target)
             result = subprocess.run(
                 ["bash", os.path.join(ROOT, "deploy.sh")],
                 env=env,

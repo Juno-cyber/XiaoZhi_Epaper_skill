@@ -7,7 +7,7 @@ PAGE="${2:?usage: todo-list-page.sh <device-host> <page> [item1] [item2] [item3]
 PORT="${XIAOZHI_PORT:-8080}"
 ITEM1="${3:-写专利}"
 ITEM2="${4:-改论文}"
-ITEM3="${5:-运动小智开发}"
+ITEM3="${5:-运动云墨开发}"
 
 case "$PAGE" in
   2|3|4|5|6|7|8|9|10|11|12|13|14|15) ;;

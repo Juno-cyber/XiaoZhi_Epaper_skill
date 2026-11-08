@@ -1,6 +1,6 @@
-# XiaoZhi E-Paper Skill
+# 云墨 E-Paper Skill
 
-让 Agent 通过局域网操控小智墨水屏。支持画布、自定义页面、时钟、图片、语音模式、设备名称、常驻页与本地 Agent 管理。
+让 Agent 通过局域网操控云墨墨水屏设备。支持画布、自定义页面、时钟、图片、小智/千问语音后端、设备名称、常驻页与本地 Agent 管理。
 
 **Agent 从 [SKILL.md](SKILL.md) 开始，不需要通读仓库。** 当前契约对齐固件 **2.5.2.8**（`c672093`）与 2026-11-08 部署的 Litsea_Top。对话页 1 只读，已创建的 2–15 页均为自定义页；默认第 2 页为“时间显示”。冰箱业务和恋爱计时已挂起，旧版固件不属于当前脚本的支持基线。
 
@@ -42,7 +42,7 @@ python3 scripts/xiaozhi.py DEVICE_IP voice-config
 python3 scripts/xiaozhi.py DEVICE_IP show 5
 python3 scripts/xiaozhi.py DEVICE_IP home
 python3 scripts/xiaozhi.py DEVICE_IP home --page 2 --timeout-min 2
-python3 scripts/xiaozhi.py DEVICE_IP name --set "书桌小智"
+python3 scripts/xiaozhi.py DEVICE_IP name --set "书桌云墨"
 ```
 
 `timeout-min 0` 关闭自动返回；设置常驻页本身不会切页。完整参数见 [API](references/api-reference.md)。
@@ -55,10 +55,10 @@ python3 scripts/xiaozhi.py DEVICE_IP name --set "书桌小智"
 python3 scripts/install_skill.py --agent hermes --dry-run
 python3 scripts/install_skill.py --agent hermes
 python3 scripts/install_skill.py --agent codex
-python3 scripts/install_skill.py --target /path/to/your-agent/skills/xiaozhi-control
+python3 scripts/install_skill.py --target /path/to/your-agent/skills/yunmo-control
 ```
 
-默认分别安装到 `~/.hermes/skills/smart-home/xiaozhi-control` 和 `$CODEX_HOME/skills/xiaozhi-control`（未设置时为 `~/.codex/skills/xiaozhi-control`）。`--target` 或 `XIAOZHI_SKILL_DIR` 可指定其他运行环境。旧命令 `bash deploy.sh` 继续调用同一个安装器。安装会清理受管理目录里的过期同类文件，拒绝符号链接与危险路径。
+默认分别安装到 `~/.hermes/skills/smart-home/yunmo-control` 和 `$CODEX_HOME/skills/yunmo-control`（未设置时为 `~/.codex/skills/yunmo-control`）。`--target` 或 `YUNMO_SKILL_DIR` 可指定其他运行环境；旧的 `XIAOZHI_SKILL_DIR` 仍兼容。旧命令 `bash deploy.sh` 继续调用同一个安装器。安装会清理受管理目录里的过期同类文件，拒绝符号链接与危险路径。
 
 ## 发现与刷新
 

@@ -167,7 +167,7 @@ python3 scripts/pixel_art_generator.py --upload <IP>
 ```
 cronjob create:
   schedule: "0 8 * * *"  # 每天 8:00
-  prompt: "查看当前时间和情境，在 xiaozhi 画布上显示一句早安和今日思考"
+  prompt: "查看当前时间和情境，在云墨画布上显示一句早安和今日思考"
   enabled_toolsets: ["terminal"]
   deliver: "local"  # 静默执行，不通知用户
 ```
